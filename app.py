@@ -95,3 +95,46 @@ with tabs[0]:
 
 # --------- Saisie ---------
 with tabs[1]:
+    st.write("Choisis **Entrée** ou **Sortie**, puis remplis les champs :")
+    col0, col1 = st.columns([1,2])
+    with col0:
+        t = st.radio("Type", ["Sortie","Entrée"], horizontal=True)
+    with col1:
+        sb = st.selectbox("Sous-bloc", SOUS_BLOCS_ENTREE if t=="Entrée" else SOUS_BLOCS_SORTIE)
+
+    d = st.date_input("Date", value=date.today())
+    montant = st.number_input("Montant", min_value=0.0, step=0.5, format="%.2f")
+    description = st.text_input("Description", placeholder="ex: 1er versement, Paie Août, Facture T1…")
+
+    cA, cB, cC = st.columns(3)
+    with cA:
+        local = st.text_input("Local (si utile)", placeholder="ex: Cité Peret N7 / Dépôt / APP 20")
+    with cB:
+        locataire = st.text_input("Locataire (si entrée Locaux)")
+    with cC:
+        fournisseur = st.text_input("Fournisseur (si sortie charges)")
+
+    cD, cE = st.columns(2)
+    with cD:
+        periode = st.text_input("Période", value=pd.to_datetime(d).strftime("%Y-%m"))
+    with cE:
+        moyen = st.selectbox("Moyen", ["CB","Cash","Virement","Chèque","Autre"])
+
+    personne = st.selectbox("Personne", ["Moi","Oncle","Autre"])
+
+    if st.button("Enregistrer", type="primary", use_container_width=True):
+        row = [
+            t,
+            pd.to_datetime(d).strftime("%Y-%m-%d"),
+            float(montant),
+            sb,
+            description,
+            local,
+            locataire if t=="Entrée" else "",
+            fournisseur if t=="Sortie" else "",
+            periode,
+            moyen,
+            personne
+        ]
+        ws.append_row(row, value_input_option="USER_ENTERED")
+        st.success("✅ Opération enregistrée !")
