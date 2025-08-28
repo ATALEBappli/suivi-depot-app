@@ -3,11 +3,12 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import date
+import streamlit.components.v1 as components
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
 
-# Patch iOS Safari : éviter le cache
+# ---- Patch iOS Safari : éviter le cache + forcer un rechargement propre 1x
 st.markdown(
     """
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -16,8 +17,22 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+components.html(
+    """
+    <script>
+      try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.get('t')) {
+          url.searchParams.set('t', Date.now().toString());
+          window.location.replace(url.toString());
+        }
+      } catch(e) { console.log('cache-bust error:', e); }
+    </script>
+    """,
+    height=0,
+)
 
-
+# ------------------ LISTES ------------------
 SOUS_BLOCS_ENTREE = ["Locaux", "APP", "Consigne", "Entrées divers"]
 SOUS_BLOCS_SORTIE = [
     "Salaire", "Maintenance", "Impôts et assurance",
@@ -25,9 +40,10 @@ SOUS_BLOCS_SORTIE = [
     "Donation, Famille et divers", "Hadem"
 ]
 
+# ------------------ HELPERS ------------------
 def get_ws():
     """Connecte Google Sheets en lisant les secrets Streamlit."""
-    # 1) Secrets du compte de service (compat : [google_service_account] ou [gcp_service_account])
+    # 1) Compte de service : [google_service_account] ou [gcp_service_account]
     if "google_service_account" in st.secrets:
         service_info = dict(st.secrets["google_service_account"])
     elif "gcp_service_account" in st.secrets:
@@ -36,13 +52,13 @@ def get_ws():
         st.error("❌ Secret manquant : ajoute [google_service_account] (ou [gcp_service_account]) dans Settings ▸ Secrets.")
         st.stop()
 
-    # 2) ID du fichier (compat : [google_sheet].sheet_id ou SPREADSHEET_ID)
+    # 2) ID du fichier : [google_sheet].sheet_id ou SPREADSHEET_ID
     if "google_sheet" in st.secrets and "sheet_id" in st.secrets["google_sheet"]:
         sheet_id = st.secrets["google_sheet"]["sheet_id"]
     elif "SPREADSHEET_ID" in st.secrets:
         sheet_id = st.secrets["SPREADSHEET_ID"]
     else:
-        st.error("❌ Secret manquant : ajoute [google_sheet]\nsheet_id = \"...\" dans Settings ▸ Secrets.")
+        st.error("❌ Secret manquant : ajoute [google_sheet]\\nsheet_id = \"...\" dans Settings ▸ Secrets.")
         st.stop()
 
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -51,23 +67,26 @@ def get_ws():
     sh = gc.open_by_key(sheet_id)
 
     try:
-        ws = sh.worksheet("transactions")
+        ws_ = sh.worksheet("transactions")
     except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title="transactions", rows=2000, cols=11)
-        ws.append_row([
+        ws_ = sh.add_worksheet(title="transactions", rows=2000, cols=11)
+        ws_.append_row([
             "type","date","montant","sous_bloc","description",
             "local","locataire","fournisseur","periode","moyen","personne"
         ])
-    return ws
+    return ws_
 
-ws = get_ws()
+# Connexion avec spinner (évite page blanche)
+st.markdown("### 📱 Chargement de *Suivi Depot*…")
+with st.spinner("Connexion à Google Sheets..."):
+    ws = get_ws()
 
 # ------------------ UI ------------------
 st.title("📱 Suivi Depot")
-tabs = st.tabs(["📊 Synthèse", "✍️ Saisie"])
+tab_syn, tab_form = st.tabs(["📊 Synthèse", "✍️ Saisie"])
 
 # --------- Synthèse ---------
-with tabs[0]:
+with tab_syn:
     records = ws.get_all_records()
     df = pd.DataFrame(records)
 
@@ -109,13 +128,9 @@ with tabs[0]:
         ticket    = dff["montant"].mean() if n_ops else 0
 
         k1, k2, k3 = st.columns(3)
-        k1.metric("Entrées (€)", f"{total_in:,.2f}".replace(",", " "))
-        k2.metric("Sorties (€)", f"{total_out:,.2f}".replace(",", " "))
-        k3.metric("Solde (€)", f"{solde:,.2f}".replace(",", " "))
-
-        k4, k5 = st.columns(2)
-        k4.metric("Nb opérations", n_ops)
-        k5.metric("Ticket moyen (€)", f"{ticket:,.2f}".replace(",", " "))
+        k1.metric("Entrées", f"{total_in:,.2f}".replace(",", " "))
+        k2.metric("Sorties", f"{total_out:,.2f}".replace(",", " "))
+        k3.metric("Solde", f"{solde:,.2f}".replace(",", " "))
 
         st.divider()
         st.subheader("Opérations")
@@ -138,8 +153,9 @@ with tabs[0]:
             st.bar_chart(by_sb.pivot(index="sous_bloc", columns="type", values="montant").fillna(0))
 
 # --------- Saisie ---------
-with tabs[1]:
+with tab_form:
     st.write("Choisis **Entrée** ou **Sortie**, puis remplis les champs :")
+
     col0, col1 = st.columns([1, 2])
     with col0:
         t = st.radio("Type", ["Sortie", "Entrée"], horizontal=True)
@@ -154,9 +170,13 @@ with tabs[1]:
     with cA:
         local = st.text_input("Local (si utile)", placeholder="ex: Cité Peret N7 / Dépôt / APP 20")
     with cB:
-        locataire = st.text_input("Locataire (si entrée Locaux)")
+        locataire = ""
+        if t == "Entrée":
+            locataire = st.text_input("Locataire (si entrée Locaux)")
     with cC:
-        fournisseur = st.text_input("Fournisseur (si sortie charges)")
+        fournisseur = ""
+        if t == "Sortie":
+            fournisseur = st.text_input("Fournisseur (si sortie charges)")
 
     cD, cE = st.columns(2)
     with cD:
@@ -167,19 +187,27 @@ with tabs[1]:
     personne = st.selectbox("Personne", ["Moi", "Oncle", "Autre"])
 
     if st.button("Enregistrer", type="primary", use_container_width=True):
-        row = [
-            t,
-            pd.to_datetime(d).strftime("%Y-%m-%d"),
-            float(montant),
-            sb,
-            description,
-            local,
-            locataire if t == "Entrée" else "",
-            fournisseur if t == "Sortie" else "",
-            periode,
-            moyen,
-            personne
-        ]
-        ws.append_row(row, value_input_option="USER_ENTERED")
-        st.success("✅ Opération enregistrée !")
-
+        # petites validations
+        errors = []
+        if montant <= 0:
+            errors.append("Montant > 0 requis.")
+        if not sb:
+            errors.append("Sous-bloc requis.")
+        if errors:
+            st.error(" | ".join(errors))
+        else:
+            row = [
+                t,
+                pd.to_datetime(d).strftime("%Y-%m-%d"),
+                float(montant),
+                sb,
+                description,
+                local,
+                locataire if t == "Entrée" else "",
+                fournisseur if t == "Sortie" else "",
+                periode,
+                moyen,
+                personne
+            ]
+            ws.append_row(row, value_input_option="USER_ENTERED")
+            st.success("✅ Opération enregistrée !")
