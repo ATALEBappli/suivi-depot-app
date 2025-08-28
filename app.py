@@ -7,6 +7,17 @@ from datetime import date
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
 
+# Patch iOS Safari : éviter le cache
+st.markdown(
+    """
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    """,
+    unsafe_allow_html=True
+)
+
+
 SOUS_BLOCS_ENTREE = ["Locaux", "APP", "Consigne", "Entrées divers"]
 SOUS_BLOCS_SORTIE = [
     "Salaire", "Maintenance", "Impôts et assurance",
@@ -171,3 +182,4 @@ with tabs[1]:
         ]
         ws.append_row(row, value_input_option="USER_ENTERED")
         st.success("✅ Opération enregistrée !")
+
