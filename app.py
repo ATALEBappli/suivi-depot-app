@@ -1,99 +1,79 @@
+# =======================
+# Imports
+# =======================
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import date
-import streamlit.components.v1 as components
 
-# ------------------ CONFIG ------------------
-st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
-import streamlit as st
-import streamlit.components.v1 as components
-
+# =======================
+# Page config (PREMIÈRE commande Streamlit)
+# =======================
 st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
 
-# 1) En-têtes anti-cache
+# =======================
+# Patch anti-cache Safari / iOS
+# =======================
+# 1) Meta headers anti-cache
 st.markdown("""
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 """, unsafe_allow_html=True)
 
-# 2) "Nuke cache" iOS/Safari : exécuté AVANT l'app (one-shot par ouverture)
+# 2) "Nuke cache" : désenregistre SW, vide CacheStorage/localStorage/sessionStorage/IndexedDB,
+# puis recharge avec un paramètre t=timestamp (one-shot par ouverture)
 components.html("""
 <script>
 (async () => {
   try {
-    // Empêcher la boucle infinie : on marque la fenêtre une seule fois
     if (window.name !== '__suividepot_cleaned_v3__') {
       window.name = '__suividepot_cleaned_v3__';
 
-      // a) Désenregistrer d'éventuels Service Workers
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
         for (const r of regs) { try { await r.unregister(); } catch(e){} }
       }
 
-      // b) Vider CacheStorage
       if (window.caches && caches.keys) {
         const names = await caches.keys();
         await Promise.all(names.map(n => caches.delete(n)));
       }
 
-      // c) Vider localStorage & sessionStorage
       try { localStorage.clear(); } catch(e){}
       try { sessionStorage.clear(); } catch(e){}
 
-      // d) Supprimer les bases IndexedDB (si API supportée)
       if (window.indexedDB) {
         try {
           if (indexedDB.databases) {
             const dbs = await indexedDB.databases();
             for (const db of dbs) {
               if (db && db.name) {
-                try { await new Promise((res, rej) => {
+                await new Promise((res) => {
                   const req = indexedDB.deleteDatabase(db.name);
-                  req.onsuccess = req.onerror = req.onblocked = () => res();
-                }); } catch(e){}
+                  req.onblocked = req.onerror = req.onsuccess = () => res();
+                });
               }
             }
           }
         } catch(e){}
       }
 
-      // e) Ajoute un paramètre "t" pour bust le cache réseau puis recharge
       const url = new URL(window.location.href);
       url.searchParams.set('t', Date.now().toString());
       window.location.replace(url.toString());
       return;
     }
-  } catch(e) {
-    console.log('clean error', e);
-  }
+  } catch(e) { console.log('clean error', e); }
 })();
 </script>
 """, height=0)
 
-# Anti-cache (meta + JS one-shot qui ajoute ?t=timestamp à la 1ère ouverture)
-st.markdown("""
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-""", unsafe_allow_html=True)
-
-components.html("""
-<script>
-  try{
-    const url=new URL(window.location.href);
-    if(!url.searchParams.get('t')){
-      url.searchParams.set('t', Date.now().toString());
-      window.location.replace(url.toString());
-    }
-  }catch(e){console.log('cache-bust error',e)}
-</script>
-""", height=0)
-
-# ------------------ CONSTANTES ------------------
+# =======================
+# Constantes
+# =======================
 SOUS_BLOCS_ENTREE = ["Locaux", "APP", "Consigne", "Entrées divers"]
 SOUS_BLOCS_SORTIE = [
     "Salaire", "Maintenance", "Impôts et assurance",
@@ -101,7 +81,9 @@ SOUS_BLOCS_SORTIE = [
     "Donation, Famille et divers", "Hadem"
 ]
 
-# ------------------ ACCÈS GOOGLE SHEETS ------------------
+# =======================
+# Accès Google Sheets
+# =======================
 def _read_secrets():
     if "google_service_account" in st.secrets:
         service_info = dict(st.secrets["google_service_account"])
@@ -137,7 +119,7 @@ def _open_ws():
         ])
     return ws
 
-@st.cache_data(ttl=60)  # 60s de cache pour éviter trop d’appels
+@st.cache_data(ttl=60)
 def _get_all_records():
     ws = _open_ws()
     return ws.get_all_records()
@@ -146,7 +128,9 @@ def _append_row(row):
     ws = _open_ws()
     ws.append_row(row, value_input_option="USER_ENTERED")
 
-# ------------------ UI ------------------
+# =======================
+# UI
+# =======================
 st.title("📱 Suivi Depot")
 tabs = st.tabs(["📊 Synthèse", "✍️ Saisie"])
 
@@ -163,7 +147,6 @@ with tabs[0]:
     if df.empty:
         st.info("Aucune donnée pour l’instant. Va dans l’onglet **Saisie** pour ajouter la première opération.")
     else:
-        # Casting
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df["montant"] = pd.to_numeric(df["montant"], errors="coerce")
         df["mois"] = df["date"].dt.strftime("%Y-%m")
@@ -171,7 +154,6 @@ with tabs[0]:
             lambda r: r["montant"] if r["type"] == "Entrée" else -r["montant"], axis=1
         )
 
-        # Filtres
         c1, c2, c3 = st.columns(3)
         with c1:
             mois_sel = st.selectbox("Mois", ["(Tous)"] + sorted(df["mois"].dropna().unique().tolist(), reverse=True))
@@ -190,7 +172,6 @@ with tabs[0]:
 
         dff = df[mask].copy()
 
-        # KPIs
         total_in  = dff.loc[dff["type"] == "Entrée", "montant"].sum()
         total_out = dff.loc[dff["type"] == "Sortie", "montant"].sum()
         solde     = dff["montant_signe"].sum()
@@ -222,7 +203,9 @@ with tabs[0]:
             st.bar_chart(by_month.set_index("mois"))
 
         st.subheader("Répartition par sous-bloc")
-        by_sb = dff.groupby(["type","sous_bloc"], as_index=False)["montant"].sum().sort_values(["type","montant"], ascending=[True, False])
+        by_sb = dff.groupby(["type","sous_bloc"], as_index=False)["montant"].sum().sort_values(
+            ["type","montant"], ascending=[True, False]
+        )
         if not by_sb.empty:
             st.bar_chart(by_sb.pivot(index="sous_bloc", columns="type", values="montant").fillna(0))
 
@@ -274,4 +257,3 @@ with tabs[1]:
             st.cache_data.clear()  # pour que la synthèse reflète l’ajout
         except Exception as e:
             st.error(f"❌ Problème lors de l’enregistrement : {e}")
-
