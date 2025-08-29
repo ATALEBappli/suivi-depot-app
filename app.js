@@ -94,21 +94,20 @@ function renderKPIs(rows) {
     `Entrées: ${totalIn.toLocaleString()} | Sorties: ${totalOut.toLocaleString()} | Solde: ${solde.toLocaleString()}`;
 }
 
-function renderTable(){
-  const tb = document.querySelector("#table tbody");
+function renderTable() {
+  const tb = document.querySelector("#table tbody"); // doit correspondre à <table id="table"><tbody>
   tb.innerHTML = DF
-    .sort((a,b)=>(a.date||"").localeCompare(b.date||"")).reverse()
+    .sort((a, b) => (a.date || "").localeCompare(b.date || "")).reverse()
     .map(r => `
       <tr>
-        <td>${(r.date||"").slice(0,10)}</td>
-        <td>${r.type||""}</td>
-        <td>${r.sous_bloc||""}</td>
+        <td>${(r.date || "").slice(0,10)}</td>
+        <td>${r.type || ""}</td>
+        <td>${r.sous_bloc || ""}</td>
         <td class="num">${fmt(r.montant)}</td>
-        <td>${r.description||""}</td>
+        <td>${r.description || ""}</td>
       </tr>
-    `).join("");
-
-  renderKPIs(DF);   // <– ça met à jour la synthèse
+    `)
+    .join("");
 }
 
 async function load(){
@@ -135,5 +134,6 @@ async function load(){
 });
 
 load();
+
 
 
