@@ -20,10 +20,10 @@
   </header>
 
   <main>
-  <div class="tabs">
-    <button class="tablink" onclick="openTab('synthese')">📊 Synthèse</button>
-    <button class="tablink" onclick="openTab('tableau')">📋 Tableau</button>
-  </div>
+ <div class="tabs">
+  <button class="tablink active" onclick="openTab(event,'synthese')">📊 Synthèse</button>
+  <button class="tablink" onclick="openTab(event,'saisie')">✍️ Saisie</button>
+</div>
 
   <!-- Onglet Synthèse -->
   <section id="synthese" class="tabcontent">
@@ -31,11 +31,12 @@
   </section>
 
   <!-- Onglet Tableau -->
-  <section id="tableau" class="tabcontent" style="display:none;">
-    <label>Mois
-      <select id="mois"></select>
-    </label>
-
+    
+<section id="saisie" class="tabcontent">
+  <h2>✍️ Nouvelle opération</h2>
+  <p>Ici on mettra le formulaire de saisie (ajout d’une entrée/sortie).</p>
+</section>
+    
     <label>Type
       <select id="type">
         <option>Entrée</option>
@@ -72,6 +73,7 @@
   </script>
 </body>
 </html>
+
 
 
 
