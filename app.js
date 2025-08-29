@@ -96,6 +96,8 @@ function renderKPIs(rows) {
 
 function renderTable() {
   const tb = document.querySelector("#table tbody"); // doit correspondre à <table id="table"><tbody>
+  if (!tb) return;   // <= sécurité anti-erreur
+
   tb.innerHTML = DF
     .sort((a, b) => (a.date || "").localeCompare(b.date || "")).reverse()
     .map(r => `
@@ -109,6 +111,7 @@ function renderTable() {
     `)
     .join("");
 }
+
 
 async function load(){
   try{
@@ -134,6 +137,7 @@ async function load(){
 });
 
 load();
+
 
 
 
