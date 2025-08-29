@@ -20,23 +20,32 @@
   </header>
 
   <main>
-    <div class="filters">
-      <label>Mois
-        <select id="mois"></select>
-      </label>
-      <label>Type
-        <select id="type">
-          <option value="">(Tous)</option>
-          <option>Entrée</option>
-          <option>Sortie</option>
-        </select>
-      </label>
-      <label>Sous-bloc
-        <select id="sous_bloc"></select>
-      </label>
-    </div>
+  <div class="tabs">
+    <button class="tablink" onclick="openTab('synthese')">📊 Synthèse</button>
+    <button class="tablink" onclick="openTab('tableau')">📋 Tableau</button>
+  </div>
 
+  <!-- Onglet Synthèse -->
+  <section id="synthese" class="tabcontent">
     <div id="kpis" style="margin:20px 0; font-size:18px; font-weight:bold;"></div>
+  </section>
+
+  <!-- Onglet Tableau -->
+  <section id="tableau" class="tabcontent" style="display:none;">
+    <label>Mois
+      <select id="mois"></select>
+    </label>
+
+    <label>Type
+      <select id="type">
+        <option>Entrée</option>
+        <option>Sortie</option>
+      </select>
+    </label>
+
+    <label>Sous-bloc
+      <select id="sous_bloc"></select>
+    </label>
 
     <table id="table">
       <thead>
@@ -46,7 +55,8 @@
       </thead>
       <tbody></tbody>
     </table>
-  </main>
+  </section>
+</main>
 
   <script>
     // <<< REMPLACE ICI PAR TON URL APPS SCRIPT >>>
@@ -62,5 +72,6 @@
   </script>
 </body>
 </html>
+
 
 
