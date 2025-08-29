@@ -1,3 +1,24 @@
+// ---- Onglets: afficher/masquer les sections ----
+function openTab(id) {
+  // cacher tout
+  document.querySelectorAll('.tabcontent').forEach(sec => sec.style.display = 'none');
+  // afficher la section demandée
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'block';
+
+  // état visuel bouton actif (optionnel)
+  document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
+  const btn = Array.from(document.querySelectorAll('.tablink'))
+    .find(b => (b.getAttribute('onclick') || '').includes(`'${id}'`));
+  if (btn) btn.classList.add('active');
+}
+
+// ouvrir la Synthèse par défaut au chargement
+document.addEventListener('DOMContentLoaded', () => {
+  openTab('synthese');
+});
+
+
 // JSONP helper
 function jsonp(url) {
   return new Promise((resolve, reject) => {
@@ -114,4 +135,5 @@ async function load(){
 });
 
 load();
+
 
