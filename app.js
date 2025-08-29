@@ -60,6 +60,19 @@ function applyFilters(){
   refreshKpis();
 }
 
+function renderKPIs(rows) {
+  let totalIn = 0, totalOut = 0;
+  rows.forEach(r => {
+    const m = parseFloat(r.montant || 0);
+    if (r.type === "Entrée") totalIn += m;
+    if (r.type === "Sortie") totalOut += m;
+  });
+  const solde = totalIn - totalOut;
+
+  document.getElementById("kpis").innerText =
+    `Entrées: ${totalIn.toLocaleString()} | Sorties: ${totalOut.toLocaleString()} | Solde: ${solde.toLocaleString()}`;
+}
+
 function renderTable(){
   const tb = document.querySelector("#table tbody");
   tb.innerHTML = DF
@@ -73,6 +86,8 @@ function renderTable(){
         <td>${r.description||""}</td>
       </tr>
     `).join("");
+
+  renderKPIs(DF);   // <– ça met à jour la synthèse
 }
 
 async function load(){
@@ -99,3 +114,4 @@ async function load(){
 });
 
 load();
+
