@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Suivi Depot</title>
+
+  <!-- anti-cache léger pour Safari -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>📊 Suivi Depot</h1>
+    <p id="kpis">Chargement…</p>
+  </header>
+
+  <main>
+    <div class="filters">
+      <label>Mois
+        <select id="mois"></select>
+      </label>
+      <label>Type
+        <select id="type">
+          <option value="">(Tous)</option>
+          <option>Entrée</option>
+          <option>Sortie</option>
+        </select>
+      </label>
+      <label>Sous-bloc
+        <select id="sous_bloc"></select>
+      </label>
+    </div>
+
+    <table id="table">
+      <thead>
+        <tr>
+          <th>Date</th><th>Type</th><th>Sous-bloc</th><th>Montant</th><th>Description</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <script>
+    // <<< REMPLACE ICI PAR TON URL >>>
+    window.API_URL = "PASTE_YOUR_HTTPS_SCRIPT_GOOGLE_COM_EXEC_URL";
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
