@@ -7,6 +7,72 @@ import streamlit.components.v1 as components
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
+import streamlit as st
+import streamlit.components.v1 as components
+
+st.set_page_config(page_title="Suivi Depot", page_icon="📱", layout="centered")
+
+# 1) En-têtes anti-cache
+st.markdown("""
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+""", unsafe_allow_html=True)
+
+# 2) "Nuke cache" iOS/Safari : exécuté AVANT l'app (one-shot par ouverture)
+components.html("""
+<script>
+(async () => {
+  try {
+    // Empêcher la boucle infinie : on marque la fenêtre une seule fois
+    if (window.name !== '__suividepot_cleaned_v3__') {
+      window.name = '__suividepot_cleaned_v3__';
+
+      // a) Désenregistrer d'éventuels Service Workers
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) { try { await r.unregister(); } catch(e){} }
+      }
+
+      // b) Vider CacheStorage
+      if (window.caches && caches.keys) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
+      }
+
+      // c) Vider localStorage & sessionStorage
+      try { localStorage.clear(); } catch(e){}
+      try { sessionStorage.clear(); } catch(e){}
+
+      // d) Supprimer les bases IndexedDB (si API supportée)
+      if (window.indexedDB) {
+        try {
+          if (indexedDB.databases) {
+            const dbs = await indexedDB.databases();
+            for (const db of dbs) {
+              if (db && db.name) {
+                try { await new Promise((res, rej) => {
+                  const req = indexedDB.deleteDatabase(db.name);
+                  req.onsuccess = req.onerror = req.onblocked = () => res();
+                }); } catch(e){}
+              }
+            }
+          }
+        } catch(e){}
+      }
+
+      // e) Ajoute un paramètre "t" pour bust le cache réseau puis recharge
+      const url = new URL(window.location.href);
+      url.searchParams.set('t', Date.now().toString());
+      window.location.replace(url.toString());
+      return;
+    }
+  } catch(e) {
+    console.log('clean error', e);
+  }
+})();
+</script>
+""", height=0)
 
 # Anti-cache (meta + JS one-shot qui ajoute ?t=timestamp à la 1ère ouverture)
 st.markdown("""
@@ -208,3 +274,4 @@ with tabs[1]:
             st.cache_data.clear()  # pour que la synthèse reflète l’ajout
         except Exception as e:
             st.error(f"❌ Problème lors de l’enregistrement : {e}")
+
