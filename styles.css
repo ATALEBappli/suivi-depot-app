@@ -11,3 +11,37 @@ td.num { text-align: right; }
 @media (max-width: 700px){
   .filters { grid-template-columns: 1fr; }
 }
+
+/* ——— Onglets ——— */
+.tabs {
+  display: flex;
+  gap: .5rem;
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.tablink {
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+  padding: .5rem .8rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.tablink:hover { background: #eee; }
+.tablink.active {
+  background: #0a7a5a;
+  color: #fff;
+  border-color: #0a7a5a;
+}
+
+/* ——— Sections ——— */
+.tabcontent { display: none; }
+
+/* ——— KPI et nombres ——— */
+#kpis { margin: 20px 0; font-size: 18px; font-weight: 700; }
+.num  { text-align: right; }
+
+/* Table responsive léger (optionnel) */
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+thead th { background: #fafafa; text-align: left; }
