@@ -225,6 +225,55 @@ load();
   });
 })();
 
+// === Sous-blocs dynamiques pour le formulaire de saisie ===
+const FORM_SB_OPTIONS = {
+  "Entrée": [
+    "Locaux", "APP", "Consigne", "Entrées divers"
+  ],
+  "Sortie": [
+    "Salaire", "Maintenance", "Impôts et assurance",
+    "Électricité", "Eau", "Téléphone",
+    "Donation, Famille et divers", "Hadem"
+  ]
+};
+
+function populateFormSousBloc() {
+  const type = document.getElementById('form_type')?.value || "Entrée";
+  const sel  = document.getElementById('form_sous_bloc');
+  if (!sel) return;
+
+  const opts = (FORM_SB_OPTIONS[type] || []);
+  sel.innerHTML =
+    opts.map(v => `<option value="${v}">${v}</option>`).join('') +
+    `<option value="__autre__">Autre…</option>`;
+
+  // valeur par défaut = 1er élément
+  sel.value = opts[0] || "__autre__";
+  toggleOther(false);
+}
+
+function toggleOther(forceShow) {
+  const sel = document.getElementById('form_sous_bloc');
+  const wrap = document.getElementById('other_wrap');
+  const show = forceShow || (sel?.value === "__autre__");
+  if (wrap) wrap.style.display = show ? 'block' : 'none';
+  if (!show) {
+    const other = document.getElementById('form_sous_bloc_other');
+    if (other) other.value = '';
+  }
+}
+
+// Initialisation + écouteurs
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('form_type')) {
+    populateFormSousBloc();
+    document.getElementById('form_type').addEventListener('change', populateFormSousBloc);
+  }
+  if (document.getElementById('form_sous_bloc')) {
+    document.getElementById('form_sous_bloc').addEventListener('change', () => toggleOther());
+  }
+});
+
 
 
 
