@@ -235,45 +235,42 @@ load();
 })();
 
 
-// === Sous-blocs dynamiques pour le formulaire de saisie ===
+// ==== Sous-blocs dynamiques (Saisie) — version finale ====
 const FORM_SB_OPTIONS = {
-  "Entrée": [
-    "Locaux", "APP", "Consigne", "Entrées divers"
-  ],
+  "Entrée": ["Locaux", "APP", "Consigne", "Entrées divers"],
   "Sortie": [
-    "Salaire", "Maintenance", "Impôts et assurance",
-    "Électricité", "Eau", "Téléphone",
-    "Donation, Famille et divers", "Hadem"
+    "Salaire","Maintenance","Impôts et assurance",
+    "Électricité","Eau","Téléphone",
+    "Donation, Famille et divers","Hadem"
   ]
 };
+
+function toggleOther(forceShow) {
+  const sel  = document.getElementById('form_sous_bloc');
+  const wrap = document.getElementById('other_wrap');
+  const show = forceShow ?? (sel && sel.value === "__autre__");
+  if (wrap) wrap.style.display = show ? 'block' : 'none';
+  if (!show) {
+    const o = document.getElementById('form_sous_bloc_other');
+    if (o) o.value = '';
+  }
+}
 
 function populateFormSousBloc() {
   const type = document.getElementById('form_type')?.value || "Entrée";
   const sel  = document.getElementById('form_sous_bloc');
-  if (!sel) return;
+  if (!sel) return; // l'onglet Saisie n'est peut-être pas dans le DOM
 
-  const opts = (FORM_SB_OPTIONS[type] || []);
+  const opts = FORM_SB_OPTIONS[type] || [];
   sel.innerHTML =
     opts.map(v => `<option value="${v}">${v}</option>`).join('') +
     `<option value="__autre__">Autre…</option>`;
 
-  // valeur par défaut = 1er élément
   sel.value = opts[0] || "__autre__";
   toggleOther(false);
 }
 
-function toggleOther(forceShow) {
-  const sel = document.getElementById('form_sous_bloc');
-  const wrap = document.getElementById('other_wrap');
-  const show = forceShow || (sel?.value === "__autre__");
-  if (wrap) wrap.style.display = show ? 'block' : 'none';
-  if (!show) {
-    const other = document.getElementById('form_sous_bloc_other');
-    if (other) other.value = '';
-  }
-}
-
-// Initialisation + écouteurs
+// 1) Initialisation au chargement (même si Saisie est caché)
 document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('form_type')) {
     populateFormSousBloc();
@@ -283,6 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form_sous_bloc').addEventListener('change', () => toggleOther());
   }
 });
+
+// 2) Rendez la fonction accessible à openTab() (index.html)
+window.populateFormSousBloc = populateFormSousBloc;
+
+
 
 
 
