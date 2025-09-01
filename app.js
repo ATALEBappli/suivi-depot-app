@@ -74,6 +74,8 @@ function fillFilters(){
   }
 }
 
+
+
 function applyFilters(){
   const m = (document.querySelector("#mois")?.value || "");
   const t = (document.querySelector("#type")?.value || "");
@@ -277,6 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form_sous_bloc').addEventListener('change', () => toggleOther());
   }
 });
+
 
 
 
