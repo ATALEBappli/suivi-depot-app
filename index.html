@@ -21,8 +21,13 @@
 
   <main>
  <div class="tabs">
-  <button class="tablink active" onclick="openTab(event,'synthese')">📊 Synthèse</button>
-  <button class="tablink" onclick="openTab(event,'saisie')">✍️ Saisie</button>
+<!-- Onglets -->
+<button class="tablink active"  onclick="openTab('synthese', this)" data-tab="synthese">
+  📊 Synthèse
+</button>
+<button class="tablink"        onclick="openTab('saisie', this)"    data-tab="saisie">
+  ✍️ Saisie
+</button>
 </div>
 
   <!-- Onglet Synthèse -->
@@ -73,6 +78,7 @@
   </script>
 </body>
 </html>
+
 
 
 
