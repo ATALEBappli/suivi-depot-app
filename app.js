@@ -7,9 +7,13 @@ function openTab(id, btn) {
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
 
+  // 👉 IMPORTANT : si on ouvre "Saisie", re-remplir la liste Sous-bloc
+  if (id === 'saisie' && typeof populateFormSousBloc === 'function') {
+    populateFormSousBloc();
+  }
+
   // enlever l'état actif de tous les boutons
   document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
-
   // activer le bon bouton (celui cliqué, ou fallback via data-attr)
   (btn || document.querySelector(`.tablink[data-tab="${id}"]`))?.classList.add('active');
 }
@@ -279,6 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form_sous_bloc').addEventListener('change', () => toggleOther());
   }
 });
+
 
 
 
