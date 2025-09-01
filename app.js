@@ -54,23 +54,27 @@ function refreshKpis(){
 }
 
 function fillFilters(){
-  // Mois
+  // Mois (facultatif si l’élément n’existe pas dans le HTML)
   const moisSet = new Set(RAW.map(r => r._mois).filter(Boolean));
   const moisSel = document.querySelector("#mois");
-  moisSel.innerHTML = `<option value="">(Tous)</option>` +
-    [...moisSet].sort().reverse().map(m=>`<option>${m}</option>`).join("");
+  if (moisSel) {
+    moisSel.innerHTML = `<option value="">(Tous)</option>` +
+      [...moisSet].sort().reverse().map(m=>`<option>${m}</option>`).join("");
+  }
 
   // Sous-bloc
   const sbSet = new Set(RAW.map(r => r.sous_bloc).filter(Boolean));
   const sbSel = document.querySelector("#sous_bloc");
-  sbSel.innerHTML = `<option value="">(Tous)</option>` +
-    [...sbSet].sort().map(m=>`<option>${m}</option>`).join("");
+  if (sbSel) {
+    sbSel.innerHTML = `<option value="">(Tous)</option>` +
+      [...sbSet].sort().map(m=>`<option>${m}</option>`).join("");
+  }
 }
 
 function applyFilters(){
-  const m = document.querySelector("#mois").value;
-  const t = document.querySelector("#type").value;
-  const s = document.querySelector("#sous_bloc").value;
+  const m = (document.querySelector("#mois")?.value || "");
+  const t = (document.querySelector("#type")?.value || "");
+  const s = (document.querySelector("#sous_bloc")?.value || "");
 
   DF = RAW.filter(r =>
     (!m || r._mois===m) &&
@@ -137,6 +141,7 @@ async function load(){
 });
 
 load();
+
 
 
 
