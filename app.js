@@ -1,22 +1,25 @@
-// ---- Onglets: afficher/masquer les sections ----
-function openTab(id) {
-  // cacher tout
+// ---- Onglets: afficher/masquer + bouton actif ----
+function openTab(id, btn) {
+  // cacher toutes les sections
   document.querySelectorAll('.tabcontent').forEach(sec => sec.style.display = 'none');
-  // afficher la section demandée
+
+  // afficher celle demandée
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
 
-  // état visuel bouton actif (optionnel)
+  // enlever l'état actif de tous les boutons
   document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
-  const btn = Array.from(document.querySelectorAll('.tablink'))
-    .find(b => (b.getAttribute('onclick') || '').includes(`'${id}'`));
-  if (btn) btn.classList.add('active');
+
+  // activer le bon bouton (celui cliqué, ou fallback via data-attr)
+  (btn || document.querySelector(`.tablink[data-tab="${id}"]`))?.classList.add('active');
 }
 
 // ouvrir la Synthèse par défaut au chargement
 document.addEventListener('DOMContentLoaded', () => {
-  openTab('synthese');
+  const defaultBtn = document.querySelector('.tablink[data-tab="synthese"]');
+  openTab('synthese', defaultBtn);
 });
+
 
 
 // JSONP helper
@@ -141,6 +144,7 @@ async function load(){
 });
 
 load();
+
 
 
 
