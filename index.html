@@ -55,37 +55,52 @@
       </table>
     </section>
 
-    <!-- Onglet Saisie -->
-    <section id="saisie" class="tabcontent" style="display:none">
-      <h2>✍️ Nouvelle opération</h2>
+<!-- Onglet Saisie -->
+<section id="saisie" class="tabcontent" style="display:none">
+  <h2>✍️ Nouvelle opération</h2>
 
-      <form id="saisieForm">
-        <label>Type
-          <select id="form_type">
-            <option>Entrée</option>
-            <option>Sortie</option>
-          </select>
-        </label><br>
+  <form id="saisieForm">
+    <label>Type
+      <select id="form_type">
+        <option>Entrée</option>
+        <option>Sortie</option>
+      </select>
+    </label><br>
 
-        <label>Sous-bloc
-          <input id="form_sous_bloc" type="text" placeholder="ex: Salaire, Eau, Locaux…" />
-        </label><br>
+    <label>Sous-bloc
+      <select id="form_sous_bloc">
+        <option value="Locaux">Locaux</option>
+        <option value="APP">APP</option>
+        <option value="Consigne">Consigne</option>
+        <option value="Entrées divers">Entrées divers</option>
+        <option value="Salaire">Salaire</option>
+        <option value="Maintenance">Maintenance</option>
+        <option value="Impôts et assurance">Impôts et assurance</option>
+        <option value="Électricité">Électricité</option>
+        <option value="Eau">Eau</option>
+        <option value="Téléphone">Téléphone</option>
+        <option value="Donation, Famille et divers">Donation, Famille et divers</option>
+        <option value="Hadem">Hadem</option>
+      </select>
+    </label><br>
 
-        <label>Date
-          <input id="form_date" type="date" />
-        </label><br>
+    <label>Date
+      <input id="form_date" type="date" />
+    </label><br>
 
-        <label>Montant
-          <input id="form_montant" type="number" step="0.01" />
-        </label><br>
+    <label>Montant
+      <input id="form_montant" type="number" step="0.01" />
+    </label><br>
 
-        <label>Description
-          <input id="form_description" type="text" placeholder="ex: Facture T1, Paie Août…" />
-        </label><br>
+    <label>Description
+      <input id="form_description" type="text" placeholder="ex: Facture T1, Paie Août…" />
+    </label><br>
 
-        <button type="submit">💾 Enregistrer</button>
-      </form>
-    </section>
+    <button type="submit">💾 Enregistrer</button>
+  </form>
+</section>
+
+    
   </main>
 
   <script>
@@ -118,4 +133,5 @@
   </script>
 </body>
 </html>
+
 
