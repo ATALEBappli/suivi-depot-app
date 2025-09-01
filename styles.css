@@ -29,7 +29,7 @@ td.num { text-align: right; }
 }
 .tablink:hover { background: #eee; }
 .tablink.active {
-  background: #0a7a5a;
+  background: #16a34a; 
   color: #fff;
   border-color: #0a7a5a;
 }
@@ -45,3 +45,4 @@ td.num { text-align: right; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 8px 10px; border-bottom: 1px solid #eee; }
 thead th { background: #fafafa; text-align: left; }
+
