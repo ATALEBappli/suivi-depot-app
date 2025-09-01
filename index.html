@@ -112,22 +112,26 @@
     window.API_URL = "https://script.google.com/macros/s/AKfycbzEdQuZwptiNpuCZoWaWNJrUaF9RplxylaErSI1tloi9wa_8Jz1djMmzDv4jHJzA_gCkA/exec";
 
     // Gestion simple des onglets
-    function openTab(id, btn){
-      // cacher tout
-      document.querySelectorAll('.tabcontent').forEach(s => s.style.display = 'none');
-      // afficher le bon
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'block';
-      // état visuel
-      document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
-      if (btn) btn.classList.add('active');
-    }
 
+  function openTab(id, btn){
+    // cacher tout
+    document.querySelectorAll('.tabcontent').forEach(s => s.style.display = 'none');
+    // afficher le bon
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+
+    /* 👉 AJOUTE CETTE LIGNE : recharge la liste selon Entrée/Sortie quand on ouvre "Saisie" */
+    if (id === 'saisie' && typeof populateFormSousBloc === 'function') { populateFormSousBloc(); }
+
+    // état visuel
+    document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
     // Ouvrir Synthèse au chargement
     document.addEventListener('DOMContentLoaded', () => openTab('synthese', document.querySelector('.tablink')));
   </script>
 
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=1"></script>
 
   <!-- Service Worker pour PWA -->
   <script>
@@ -137,6 +141,7 @@
   </script>
 </body>
 </html>
+
 
 
 
