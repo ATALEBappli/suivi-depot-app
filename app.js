@@ -236,14 +236,24 @@ load();
 
 
 // ==== Sous-blocs dynamiques (Saisie) — version finale ====
+// === Sous-blocs dynamiques pour le formulaire de saisie ===
 const FORM_SB_OPTIONS = {
-  "Entrée": ["Locaux", "APP", "Consigne", "Entrées divers"],
+  "Entrée": [
+    "Locaux",
+    "APP",
+    "Consigne",
+    "Entrées divers"
+  ],
   "Sortie": [
-    "Salaire","Maintenance","Impôts et assurance",
-    "Électricité","Eau","Téléphone",
-    "Donation, Famille et divers","Hadem"
+    "Salaire",
+    "Maintenance",
+    "Impôts et assurance",
+    "Électricité, Eau et Téléphone",
+    "Donation, Famille et divers",
+    "Hadem"
   ]
 };
+
 
 function toggleOther(forceShow) {
   const sel  = document.getElementById('form_sous_bloc');
@@ -283,6 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 2) Rendez la fonction accessible à openTab() (index.html)
 window.populateFormSousBloc = populateFormSousBloc;
+
 
 
 
