@@ -41,14 +41,6 @@
         </select>
       </label>
 
-      <label>Sous-bloc
-  <select id="form_sous_bloc"></select>
-</label>
-<div id="other_wrap" style="display:none; margin:6px 0 10px 0;">
-  <input id="form_sous_bloc_other" type="text" placeholder="Saisir un autre sous-bloc…" />
-</div>
-
-
       <table id="table">
         <thead>
           <tr>
@@ -71,22 +63,12 @@
       </select>
     </label><br>
 
-    <label>Sous-bloc
-      <select id="form_sous_bloc">
-        <option value="Locaux">Locaux</option>
-        <option value="APP">APP</option>
-        <option value="Consigne">Consigne</option>
-        <option value="Entrées divers">Entrées divers</option>
-        <option value="Salaire">Salaire</option>
-        <option value="Maintenance">Maintenance</option>
-        <option value="Impôts et assurance">Impôts et assurance</option>
-        <option value="Électricité">Électricité</option>
-        <option value="Eau">Eau</option>
-        <option value="Téléphone">Téléphone</option>
-        <option value="Donation, Famille et divers">Donation, Famille et divers</option>
-        <option value="Hadem">Hadem</option>
-      </select>
-    </label><br>
+          <label>Sous-bloc
+  <select id="form_sous_bloc"></select>
+</label>
+<div id="other_wrap" style="display:none; margin:6px 0 10px 0;">
+  <input id="form_sous_bloc_other" type="text" placeholder="Saisir un autre sous-bloc…" />
+</div>
 
     <label>Date
       <input id="form_date" type="date" />
@@ -131,7 +113,7 @@
     document.addEventListener('DOMContentLoaded', () => openTab('synthese', document.querySelector('.tablink')));
   </script>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 
   <!-- Service Worker pour PWA -->
   <script>
@@ -141,6 +123,7 @@
   </script>
 </body>
 </html>
+
 
 
 
