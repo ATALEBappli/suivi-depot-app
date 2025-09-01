@@ -154,25 +154,32 @@ load();
     ev.preventDefault();
 
     // 1) Récupérer les valeurs
-    const type        = document.getElementById("form_type").value.trim();
-    const sous_bloc   = document.getElementById("form_sous_bloc").value.trim();
-    const date        = document.getElementById("form_date").value;         // yyyy-mm-dd
-    const montantStr  = document.getElementById("form_montant").value;
-    const description = document.getElementById("form_description").value.trim();
+    const type       = document.getElementById("form_type").value.trim();
+
+    const sbSel      = document.getElementById("form_sous_bloc").value;
+    const sbOther    = (document.getElementById("form_sous_bloc_other")?.value || "").trim();
+    const sous_bloc  = (sbSel === "__autre__" ? sbOther : sbSel);
+
+    const date       = document.getElementById("form_date").value; // yyyy-mm-dd
+    const montantStr = document.getElementById("form_montant").value;
+    const description= document.getElementById("form_description").value.trim();
 
     // 2) Validations simples
     if (!type || !date || !montantStr) {
       alert("Merci de renseigner au moins : Type, Date et Montant.");
       return;
     }
-    const montant = Number(montantStr);
+    if (sbSel === "__autre__" && !sbOther) {
+      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
+      return;
+    }
+    const montant = Number(String(montantStr).replace(",", "."));
     if (Number.isNaN(montant)) {
       alert("Le montant n'est pas un nombre valide.");
       return;
     }
 
     // 3) Appeler l'API Apps Script en JSONP avec action=add
-    //    (Assume que ton Apps Script accepte ?action=add&type=...&sous_bloc=...&date=...&montant=...&description=...)
     const params = new URLSearchParams({
       action: "add",
       type,
@@ -183,7 +190,7 @@ load();
     });
 
     try {
-      // window.API_URL DOIT pointer sur ton WebApp /exec (comme pour la lecture)
+      // window.API_URL doit pointer sur ton WebApp /exec
       const url = window.API_URL + (window.API_URL.includes("?") ? "&" : "?") + params.toString();
 
       const res = await jsonp(url);   // on réutilise la fonction jsonp(url) déjà définie
@@ -194,36 +201,33 @@ load();
       // 4) Remettre le formulaire à zéro
       form.reset();
 
-      // 5) Mettre à jour l'UI localement (sans attendre) et rafraîchir
+      // 5) Mettre à jour l'UI localement et rafraîchir
       const newRow = {
         type,
         sous_bloc,
-        date,                                  // "yyyy-mm-dd"
-        montant,                               // nombre
+        date,
+        montant,
         description,
-        _mois: (function computeMois(dateStr){
-          if(!dateStr) return "";
+        _mois: (function (dateStr) {
+          if (!dateStr) return "";
           const d = new Date(dateStr);
           if (isNaN(+d)) return "";
-          return d.toISOString().slice(0,7);
+          return d.toISOString().slice(0, 7);
         })(date)
       };
-
-      // ajoute localement, puis recalcul des filtres/kpis/table
       RAW.push(newRow);
       fillFilters();
       applyFilters();
 
-      // 6) Revenir sur "Synthèse"
-      openTab('synthese');
-
-      // (optionnel) message visuel
+      // 6) Retour à la synthèse + message
+      openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
       alert("✅ Opération enregistrée !");
     } catch (e) {
       alert("❌ Erreur d'enregistrement : " + e.message);
     }
   });
 })();
+
 
 // === Sous-blocs dynamiques pour le formulaire de saisie ===
 const FORM_SB_OPTIONS = {
@@ -273,6 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form_sous_bloc').addEventListener('change', () => toggleOther());
   }
 });
+
 
 
 
