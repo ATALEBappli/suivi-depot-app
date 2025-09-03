@@ -295,6 +295,99 @@ document.addEventListener('DOMContentLoaded', () => {
 window.populateFormSousBloc = populateFormSousBloc;
 
 
+// ====== CONFIG APP ======
+let CONFIG = {
+  logements: [] // [{num:"06", type:"F3", locataire:"BRAZAOUI", loyer:15000}, ...]
+};
+
+// -- Appelle l'API pour charger toute la config (logements, etc.)
+async function loadConfig() {
+  try {
+    const res = await jsonp(`${window.API_URL}?action=config&what=all`);
+    if (!res || !res.ok) throw new Error(res && res.error || "Réponse config invalide");
+    CONFIG = Object.assign({ logements: [] }, res.config || {});
+    renderConfig();
+  } catch(e) {
+    console.warn("Config load error:", e.message);
+  }
+}
+
+// -- Rendu global de la page Paramétrage (on a pour l’instant que 'logements')
+function renderConfig() {
+  renderLogementsTable();
+  // 🔜 plus tard : renderLocauxTable(), renderImpotsTable(), etc.
+}
+
+// ========= BLOC 'APPARTEMENTS' =========
+function renderLogementsTable() {
+  const tb = document.querySelector('#cfg-log-table tbody');
+  if (!tb) return;
+  tb.innerHTML = (CONFIG.logements || []).map((r, i) => `
+    <tr data-i="${i}">
+      <td><input value="${r.num || ''}"        size="4"   /></td>
+      <td><input value="${r.type || ''}"       size="4"   placeholder="F2/F3/F4"/></td>
+      <td><input value="${r.locataire || ''}"  size="18"  /></td>
+      <td><input value="${r.loyer || ''}"      size="8"   type="number" step="0.01"/></td>
+      <td><button class="row-del">🗑️</button></td>
+    </tr>
+  `).join('');
+}
+
+// Ajouter / Supprimer / Sauver
+document.addEventListener('click', (e) => {
+  // bouton Ajouter
+  if (e.target.id === 'cfg-log-add') {
+    CONFIG.logements.push({ num:'', type:'F3', locataire:'', loyer:'' });
+    renderLogementsTable();
+  }
+  // bouton supprimer ligne
+  if (e.target.classList.contains('row-del')) {
+    const tr = e.target.closest('tr');
+    const i = Number(tr?.dataset?.i ?? -1);
+    if (i >= 0) {
+      CONFIG.logements.splice(i,1);
+      renderLogementsTable();
+    }
+  }
+  // bouton Sauvegarder
+  if (e.target.id === 'cfg-log-save') {
+    // relire les inputs visibles => met à jour CONFIG.logements
+    const rows = Array.from(document.querySelectorAll('#cfg-log-table tbody tr'));
+    CONFIG.logements = rows.map(tr => {
+      const [numEl, typeEl, locEl, loyEl] = tr.querySelectorAll('input');
+      return {
+        num: (numEl.value || '').trim(),
+        type: (typeEl.value || '').trim(),
+        locataire: (locEl.value || '').trim(),
+        loyer: Number((loyEl.value || '0').replace(',', '.')) || 0
+      };
+    });
+    saveLogements();
+  }
+});
+
+async function saveLogements() {
+  const msg = document.getElementById('cfg-log-msg');
+  try {
+    msg && (msg.textContent = 'Enregistrement…');
+    // JSONP GET => encoder le JSON
+    const payload = encodeURIComponent(JSON.stringify(CONFIG.logements||[]));
+    const url = `${window.API_URL}?action=config&save=logements&payload=${payload}`;
+    const res = await jsonp(url);
+    if (!res || !res.ok) throw new Error(res && res.error || "save invalide");
+    msg && (msg.textContent = '✅ Sauvegardé');
+    // recharger pour lisser les écarts
+    await loadConfig();
+  } catch(e) {
+    msg && (msg.textContent = '❌ ' + e.message);
+  } finally {
+    setTimeout(()=>{ msg && (msg.textContent = ''); }, 2000);
+  }
+}
+
+// Charge la config au démarrage
+document.addEventListener('DOMContentLoaded', loadConfig);
+
 
 
 
