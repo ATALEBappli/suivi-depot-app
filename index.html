@@ -23,6 +23,7 @@
     <div class="tabs">
       <button class="tablink active" onclick="openTab('synthese', this)" data-tab="synthese">📊 Synthèse</button>
       <button class="tablink"        onclick="openTab('saisie', this)"    data-tab="saisie">✍️ Saisie</button>
+      <button class="tablink" onclick="openTab('param', this)" data-tab="param">⚙️ Paramétrage</button>
     </div>
 
     <!-- Onglet Synthèse -->
@@ -85,6 +86,35 @@
     <button type="submit">💾 Enregistrer</button>
   </form>
 </section>
+<section id="param" class="tabcontent" style="display:none">
+  <h2>⚙️ Paramétrage</h2>
+
+  <!-- Bloc 1 : Appartements -->
+  <article class="card">
+    <h3>🏢 Appartements</h3>
+    <p class="muted">Gère ici la liste des appartements (Num, Type, Locataire, Loyer). Ces données servent au pré-remplissage dans <em>Saisie</em> quand tu choisis Entrée → APP.</p>
+
+    <div style="margin:8px 0">
+      <button id="cfg-log-add">➕ Ajouter un appartement</button>
+      <button id="cfg-log-save">💾 Sauvegarder</button>
+      <span id="cfg-log-msg" class="muted"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="cfg-log-table">
+        <thead>
+          <tr>
+            <th>Num</th><th>Type (F2/F3/F4…)</th><th>Locataire</th><th>Loyer (€)</th><th></th>
+          </tr>
+        </thead>
+        <tbody><!-- rempli par JS --></tbody>
+      </table>
+    </div>
+  </article>
+
+  <!-- 🔜 Blocs à venir : Locaux, Impôts, etc. -->
+  <!-- <article class="card"><h3>🏬 Locaux</h3> … </article> -->
+</section>
 
     
   </main>
@@ -123,6 +153,7 @@
   </script>
 </body>
 </html>
+
 
 
 
