@@ -388,6 +388,139 @@ async function saveLogements() {
 // Charge la config au démarrage
 document.addEventListener('DOMContentLoaded', loadConfig);
 
+/* ================== Paramétrage : Appartements ================== */
+const APARTS_KEY = "suividepot_aparts_v1";
+
+function loadAparts() {
+  try {
+    const raw = localStorage.getItem(APARTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn("loadAparts error:", e);
+    return [];
+  }
+}
+
+function saveAparts(rows) {
+  try {
+    localStorage.setItem(APARTS_KEY, JSON.stringify(rows));
+  } catch (e) {
+    alert("Erreur de sauvegarde (localStorage).");
+    console.error(e);
+  }
+}
+
+function renderApartsTable() {
+  const tbody = document.querySelector("#cfg-log-table tbody");
+  if (!tbody) return;
+
+  const rows = loadAparts();
+  tbody.innerHTML = rows
+    .map(
+      (r, i) => `
+      <tr data-i="${i}">
+        <td><input name="num"    type="text"  value="${r.num ?? ""}"       placeholder="ex: 06" style="width:80px"></td>
+        <td><input name="type"   type="text"  value="${r.type ?? ""}"      placeholder="F2/F3/F4" style="width:100px"></td>
+        <td><input name="loc"    type="text"  value="${r.loc ?? ""}"       placeholder="Nom du locataire" style="min-width:220px"></td>
+        <td><input name="loyer"  type="number" step="0.01" value="${r.loyer ?? ""}" placeholder="€" style="width:120px"></td>
+        <td><button type="button" class="rm">✖</button></td>
+      </tr>`
+    )
+    .join("");
+}
+
+function collectApartsFromDOM() {
+  const rows = [];
+  document.querySelectorAll("#cfg-log-table tbody tr").forEach((tr) => {
+    const num   = tr.querySelector('input[name="num"]')?.value.trim()  || "";
+    const type  = tr.querySelector('input[name="type"]')?.value.trim() || "";
+    const loc   = tr.querySelector('input[name="loc"]')?.value.trim()  || "";
+    const loyer = tr.querySelector('input[name="loyer"]')?.value || "";
+
+    rows.push({
+      num,
+      type,
+      loc,
+      loyer: Number(String(loyer).replace(",", ".")) || 0,
+    });
+  });
+  return rows;
+}
+
+function addApartRow() {
+  const tbody = document.querySelector("#cfg-log-table tbody");
+  if (!tbody) return;
+
+  // on ajoute visuellement une ligne vide (pas de sauvegarde tout de suite)
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input name="num"   type="text"  placeholder="ex: 06" style="width:80px"></td>
+    <td><input name="type"  type="text"  placeholder="F2/F3/F4" style="width:100px"></td>
+    <td><input name="loc"   type="text"  placeholder="Nom du locataire" style="min-width:220px"></td>
+    <td><input name="loyer" type="number" step="0.01" placeholder="€" style="width:120px"></td>
+    <td><button type="button" class="rm">✖</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function attachParamHandlers() {
+  // Bouton Ajouter
+  const addBtn = document.getElementById("cfg-log-add");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      addApartRow();
+    });
+  }
+
+  // Bouton Sauvegarder
+  const saveBtn = document.getElementById("cfg-log-save");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => {
+      const msg = document.getElementById("cfg-log-msg");
+      const rows = collectApartsFromDOM();
+
+      // (optionnel) petite validation : on enlève les lignes totalement vides
+      const cleaned = rows.filter(
+        (r) => r.num || r.type || r.loc || r.loyer
+      );
+
+      saveAparts(cleaned);
+      if (msg) {
+        msg.textContent = "Sauvegardé ✅";
+        setTimeout(() => (msg.textContent = ""), 2000);
+      }
+
+      // on re-render depuis le storage pour être sûr d’être à jour
+      renderApartsTable();
+    });
+  }
+
+  // Supprimer une ligne (delegation)
+  const tbody = document.querySelector("#cfg-log-table tbody");
+  if (tbody) {
+    tbody.addEventListener("click", (e) => {
+      if (!(e.target instanceof Element)) return;
+      if (e.target.classList.contains("rm")) {
+        e.preventDefault();
+        const tr = e.target.closest("tr");
+        if (!tr) return;
+
+        // on enlève la ligne du DOM (sans sauvegarde auto)
+        tr.remove();
+      }
+    });
+  }
+}
+
+// Initialisation Paramétrage au chargement
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.getElementById("cfg-log-table")) {
+    renderApartsTable();
+    attachParamHandlers();
+  }
+});
+/* ================== /Paramétrage : Appartements ================== */
+
 
 
 
