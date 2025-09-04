@@ -159,41 +159,76 @@ load();
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
 
-    // 1) Récupérer les valeurs
-    const type       = document.getElementById("form_type").value.trim();
+    
+// 1) Récupérer les valeurs
+const type        = document.getElementById("form_type").value.trim();
 
-    const sbSel      = document.getElementById("form_sous_bloc").value;
-    const sbOther    = (document.getElementById("form_sous_bloc_other")?.value || "").trim();
-    const sous_bloc  = (sbSel === "__autre__" ? sbOther : sbSel);
+const sbSel       = document.getElementById("form_sous_bloc").value;
+const sbOther     = (document.getElementById("form_sous_bloc_other")?.value || "").trim();
+const sous_bloc   = (sbSel === "__autre__" ? sbOther : sbSel);
 
-    const date       = document.getElementById("form_date").value; // yyyy-mm-dd
-    const montantStr = document.getElementById("form_montant").value;
-    const description= document.getElementById("form_description").value.trim();
+let   date        = document.getElementById("form_date").value; // yyyy-mm-dd
+const montantStr  = document.getElementById("form_montant").value;
+let   description = document.getElementById("form_description").value.trim();
 
-    // 2) Validations simples
-    if (!type || !date || !montantStr) {
-      alert("Merci de renseigner au moins : Type, Date et Montant.");
-      return;
-    }
-    if (sbSel === "__autre__" && !sbOther) {
-      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
-      return;
-    }
-    const montant = Number(String(montantStr).replace(",", "."));
-    if (Number.isNaN(montant)) {
-      alert("Le montant n'est pas un nombre valide.");
-      return;
-    }
+// 👉 Champs spécifiques APP (remplis seulement si Entrée → APP)
+let local = "";
+let locataire = "";
+
+if (type === "Entrée" && sous_bloc === "APP") {
+  const num = document.getElementById("form_app_num")?.value || "";
+  locataire = (document.getElementById("form_locataire")?.value || "").trim();
+
+  // "Local" = étiquette ; adapte si tu veux inclure un type
+  local = num ? `APP ${num}` : "APP";
+
+  // Date par défaut = aujourd’hui si vide
+  if (!date) {
+    const d = new Date();
+    date = d.toISOString().slice(0, 10); // yyyy-mm-dd
+  }
+  // Description par défaut si vide
+  if (!description) {
+    const mois = (date || new Date().toISOString().slice(0,10)).slice(0,7);
+    description = `Loyer ${mois}`;
+  }
+}
+
+// 2) Validations simples
+if (!type || !date || !montantStr) {
+  alert("Merci de renseigner au moins : Type, Date et Montant.");
+  return;
+}
+if (sbSel === "__autre__" && !sbOther) {
+  alert("Merci de préciser le sous-bloc (champ 'Autre…').");
+  return;
+}
+
+// Montant final (prend le loyer auto si présent, sinon la saisie)
+let montant = Number(String(montantStr).replace(",", "."));
+if (type === "Entrée" && sous_bloc === "APP") {
+  const aLoyer = Number(document.getElementById("app-loyer")?.value || 0) || 0;
+  if (aLoyer > 0) montant = aLoyer;
+}
+if (Number.isNaN(montant)) {
+  alert("Le montant n'est pas un nombre valide.");
+  return;
+}
+
+
 
     // 3) Appeler l'API Apps Script en JSONP avec action=add
-    const params = new URLSearchParams({
-      action: "add",
-      type,
-      sous_bloc,
-      date,                      // yyyy-mm-dd
-      montant: String(montant),  // en nombre
-      description
-    });
+const params = new URLSearchParams({
+  action: "add",
+  type,
+  sous_bloc,
+  date,                       // yyyy-mm-dd
+  montant: String(montant),   // nombre
+  description,
+  local,                      // <-- NOUVEAU
+  locataire                   // <-- NOUVEAU
+});
+
 
     try {
       // window.API_URL doit pointer sur ton WebApp /exec
@@ -207,20 +242,34 @@ load();
       // 4) Remettre le formulaire à zéro
       form.reset();
 
+      // --- Nettoyage optionnel du bloc APP après enregistrement ---
+document.getElementById("form_app_num")?.value = "";
+document.getElementById("app-type")?.value    = "";
+document.getElementById("form_locataire")?.value = "";
+document.getElementById("app-loyer")?.value   = "";
+
+// si le loyer a été copié dans le champ Montant, on l’efface aussi
+document.getElementById("form_montant")?.value = "";
+
+// refermer le bloc APP
+toggleAppExtra(false);
+
+// remettre la date du jour
+document.getElementById("form_date").value = new Date().toISOString().slice(0, 10);
+
+
       // 5) Mettre à jour l'UI localement et rafraîchir
-      const newRow = {
-        type,
-        sous_bloc,
-        date,
-        montant,
-        description,
-        _mois: (function (dateStr) {
-          if (!dateStr) return "";
-          const d = new Date(dateStr);
-          if (isNaN(+d)) return "";
-          return d.toISOString().slice(0, 7);
-        })(date)
-      };
+     const newRow = {
+  type,
+  sous_bloc,
+  date,
+  montant,
+  description,
+  local,          // <-- NOUVEAU
+  locataire,      // <-- NOUVEAU
+  _mois: date.slice(0, 7)  // "YYYY-MM"
+};
+
       RAW.push(newRow);
       fillFilters();
       applyFilters();
@@ -492,6 +541,7 @@ document.addEventListener("DOMContentLoaded", () => {
     buildAppNumList();
   }
 });
+
 
 
 
