@@ -448,6 +448,52 @@ document.addEventListener("DOMContentLoaded", () => {
 /* ================== /Paramétrage : Appartements ================== */
 
 
+// ==================== Gestion Appartements (Saisie) ====================
+
+// Remplit la liste des numéros d'appartements à partir du paramétrage
+function buildAppNumList() {
+  const sel = document.getElementById("app-num");
+  if (!sel) return;
+
+  const aparts = loadAparts(); // récupère depuis le localStorage
+  sel.innerHTML = aparts
+    .map(r => `<option value="${r.num}">${r.num}</option>`)
+    .join("");
+
+  if (aparts.length > 0) {
+    sel.value = aparts[0].num; // sélectionne le premier par défaut
+    onAppNumChange();
+  }
+}
+
+// Quand on change de numéro → remplit automatiquement type, locataire, loyer
+function onAppNumChange() {
+  const sel = document.getElementById("app-num");
+  if (!sel) return;
+
+  const num = sel.value;
+  const aparts = loadAparts();
+  const found = aparts.find(r => r.num === num);
+
+  if (found) {
+    document.getElementById("app-type").value     = found.type || "";
+    document.getElementById("app-loc").value      = found.loc || "";
+    document.getElementById("app-loyer").value    = found.loyer || "";
+    document.getElementById("form_montant").value = found.loyer || "";
+    document.getElementById("form_date").value    = new Date().toISOString().slice(0,10); // date du jour
+  }
+}
+
+// Brancher les événements
+document.addEventListener("DOMContentLoaded", () => {
+  const sel = document.getElementById("app-num");
+  if (sel) {
+    sel.addEventListener("change", onAppNumChange);
+    buildAppNumList();
+  }
+});
+
+
 
 
 
