@@ -278,7 +278,26 @@ function populateFormSousBloc() {
 
   sel.value = opts[0] || "__autre__";
   toggleOther(false);
+   // 👉 Ajoute cette ligne
+  toggleAppExtra();
 }
+function toggleAppExtra() {
+  const type = document.getElementById('form_type')?.value;
+  const sous = document.getElementById('form_sous_bloc')?.value;
+  const extra = document.getElementById('app-extra');
+
+  if (extra) {
+    extra.style.display = (type === "Entrée" && sous === "APP") ? "block" : "none";
+  }
+}
+
+// branche l’événement
+document.addEventListener('DOMContentLoaded', () => {
+  const formType = document.getElementById('form_type');
+  const formSB   = document.getElementById('form_sous_bloc');
+  if (formType) formType.addEventListener('change', toggleAppExtra);
+  if (formSB)   formSB.addEventListener('change', toggleAppExtra);
+});
 
 // 1) Initialisation au chargement (même si Saisie est caché)
 document.addEventListener('DOMContentLoaded', () => {
@@ -427,6 +446,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 /* ================== /Paramétrage : Appartements ================== */
+
 
 
 
