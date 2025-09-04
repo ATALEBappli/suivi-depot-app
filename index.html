@@ -70,6 +70,22 @@
 <div id="other_wrap" style="display:none; margin:6px 0 10px 0;">
   <input id="form_sous_bloc_other" type="text" placeholder="Saisir un autre sous-bloc…" />
 </div>
+    
+   
+<div id="app-extra" style="display:none; padding:10px; margin:10px 0; border:1px dashed #ccc; border-radius:8px;">
+  <strong>Appartement</strong>
+  <div style="display:grid; gap:8px; grid-template-columns: 1fr 1fr;">
+    <label>Numéro
+      <select id="form_app_num"></select>
+    </label>
+    <label>Locataire
+      <input id="form_locataire" type="text" placeholder="Nom du locataire">
+    </label>
+  </div>
+  <p class="muted" style="margin:6px 0 0 0">Le montant et la date sont aussi pré-remplis; vous pouvez les modifier.</p>
+</div>
+<!-- puis ton <label>Date> existant -->
+
 
     <label>Date
       <input id="form_date" type="date" />
@@ -153,6 +169,7 @@
   </script>
 </body>
 </html>
+
 
 
 
