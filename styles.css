@@ -46,3 +46,28 @@ table { width: 100%; border-collapse: collapse; }
 th, td { padding: 8px 10px; border-bottom: 1px solid #eee; }
 thead th { background: #fafafa; text-align: left; }
 
+
+/* === Désactive le header collant === */
+header,
+.tabs {
+  position: static !important;   /* annule tout sticky/fixed */
+  top: auto;
+}
+
+/* Supprime les superpositions éventuelles */
+header {
+  z-index: auto !important;
+}
+
+/* Enlève le décalage si tu avais prévu du padding-top */
+main {
+  padding-top: 0 !important;
+}
+
+/* Empêche le scroll de forcer un retour en haut */
+html, body {
+  scroll-behavior: auto;
+  margin: 0;
+}
+
+
