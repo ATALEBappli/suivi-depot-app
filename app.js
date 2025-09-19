@@ -177,7 +177,6 @@ load();
       return;
     }
 
-    // Montant final (unique source = #form_montant)
     const montant = Number(String(montantStr).replace(',', '.'));
     if (Number.isNaN(montant)) {
       alert("Le montant n'est pas un nombre valide.");
@@ -292,59 +291,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.populateFormSousBloc = populateFormSousBloc;
 
-/**************** Paramétrage : Appartements (localStorage) ****************/
-const APARTS_KEY = 'suividepot_aparts_v1';
+/**************** Paramétrage : Appartements via API Google Sheets ****************/
+let APARTS = [];
 
-function loadAparts() {
-  try {
-    const raw = localStorage.getItem(APARTS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.warn('loadAparts error:', e);
-    return [];
-  }
+async function apiReadAparts() {
+  const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&what=all';
+  const res = await jsonp(url);
+  if (!res || !res.ok) throw new Error((res && res.error) || 'config read failed');
+  return res.config?.logements || [];
 }
 
-function saveAparts(rows) {
-  try {
-    localStorage.setItem(APARTS_KEY, JSON.stringify(rows));
-  } catch (e) {
-    alert('Erreur de sauvegarde (localStorage).');
-    console.error(e);
-  }
+async function apiSaveAparts(rows) {
+  const payload = encodeURIComponent(JSON.stringify(rows || []));
+  const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&save=logements&payload=' + payload;
+  const res = await jsonp(url);
+  if (!res || !res.ok) throw new Error((res && res.error) || 'config save failed');
 }
 
 function renderApartsTable() {
   const tbody = document.querySelector('#cfg-log-table tbody');
   if (!tbody) return;
-
-  const rows = loadAparts();
-  tbody.innerHTML = rows
-    .map(
-      (r, i) => `
-      <tr data-i="${i}">
-        <td><input name="num"   type="text"  value="${r.num ?? ''}" placeholder="ex: 06"        style="width:80px"></td>
-        <td><input name="type"  type="text"  value="${r.type ?? ''}" placeholder="F2/F3/F4"     style="width:100px"></td>
-        <td><input name="loc"   type="text"  value="${r.loc ?? ''}"  placeholder="Locataire"     style="min-width:220px"></td>
-        <td><input name="loyer" type="number" step="0.01" value="${r.loyer ?? ''}" placeholder="€" style="width:120px"></td>
-        <td><button type="button" class="rm">✖</button></td>
-      </tr>`
-    )
-    .join('');
+  const rows = APARTS;
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr data-i="${i}">
+      <td><input name="num"   type="text"  value="${r.num ?? ''}"            placeholder="ex: 06"        style="width:80px"></td>
+      <td><input name="type"  type="text"  value="${r.type ?? ''}"           placeholder="F2/F3/F4"      style="width:100px"></td>
+      <td><input name="loc"   type="text"  value="${r.locataire ?? ''}"      placeholder="Locataire"     style="min-width:220px"></td>
+      <td><input name="loyer" type="number" step="0.01" value="${r.loyer ?? ''}" placeholder="€"         style="width:120px"></td>
+      <td><button type="button" class="rm">✖</button></td>
+    </tr>
+  `).join('');
 }
 
 function collectApartsFromDOM() {
   const rows = [];
   document.querySelectorAll('#cfg-log-table tbody tr').forEach(tr => {
-    const num = tr.querySelector('input[name="num"]')?.value.trim() || '';
-    const type = tr.querySelector('input[name="type"]')?.value.trim() || '';
-    const loc = tr.querySelector('input[name="loc"]')?.value.trim() || '';
+    const num   = tr.querySelector('input[name="num"]')?.value.trim() || '';
+    const type  = tr.querySelector('input[name="type"]')?.value.trim() || '';
+    const loc   = tr.querySelector('input[name="loc"]')?.value.trim() || '';
     const loyer = tr.querySelector('input[name="loyer"]')?.value || '';
     rows.push({
       num,
       type,
-      loc,
-      loyer: Number(String(loyer).replace(',', '.')) || 0
+      locataire: loc,
+      loyer: Number(String(loyer).replace(',', '.')) || 0,
     });
   });
   return rows;
@@ -355,7 +345,7 @@ function addApartRow() {
   if (!tbody) return;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input name="num"   type="text"  placeholder="ex: 06"      style="width:80px"></td>
+    <td><input name="num"   type="text"  placeholder="ex: 06"       style="width:80px"></td>
     <td><input name="type"  type="text"  placeholder="F2/F3/F4"     style="width:100px"></td>
     <td><input name="loc"   type="text"  placeholder="Locataire"    style="min-width:220px"></td>
     <td><input name="loyer" type="number" step="0.01" placeholder="€" style="width:120px"></td>
@@ -369,24 +359,24 @@ function attachParamHandlers() {
 
   const saveBtn = document.getElementById('cfg-log-save');
   if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
+    saveBtn.addEventListener('click', async () => {
       const msg = document.getElementById('cfg-log-msg');
-      const rows = collectApartsFromDOM();
-      const cleaned = rows.filter(r => r.num || r.type || r.loc || r.loyer);
-      saveAparts(cleaned);
-      if (msg) {
-        msg.textContent = 'Sauvegardé ✅';
-        setTimeout(() => (msg.textContent = ''), 2000);
+      try {
+        const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
+        await apiSaveAparts(rows);
+        APARTS = await apiReadAparts();
+        renderApartsTable();
+        if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
+      } catch (e) {
+        if (msg) msg.textContent = 'Erreur: ' + e.message;
       }
-      renderApartsTable(); // re-render depuis le storage
     });
   }
 
   const tbody = document.querySelector('#cfg-log-table tbody');
   if (tbody) {
     tbody.addEventListener('click', e => {
-      if (!(e.target instanceof Element)) return;
-      if (e.target.classList.contains('rm')) {
+      if (e.target instanceof Element && e.target.classList.contains('rm')) {
         e.preventDefault();
         e.target.closest('tr')?.remove();
       }
@@ -394,8 +384,14 @@ function attachParamHandlers() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   if (document.getElementById('cfg-log-table')) {
+    try {
+      APARTS = await apiReadAparts();   // charge depuis Google Sheets
+    } catch (e) {
+      console.warn('Chargement logements:', e);
+      APARTS = [];
+    }
     renderApartsTable();
     attachParamHandlers();
   }
@@ -405,10 +401,9 @@ document.addEventListener('DOMContentLoaded', () => {
 function buildAppNumList() {
   const sel = document.getElementById('form_app_num');
   if (!sel) return;
-  const aparts = loadAparts();
-  sel.innerHTML = aparts.map(r => `<option value="${r.num}">${r.num}</option>`).join('');
-  if (aparts.length > 0) {
-    sel.value = aparts[0].num;
+  sel.innerHTML = APARTS.map(r => `<option value="${r.num}">${r.num}</option>`).join('');
+  if (APARTS.length > 0) {
+    sel.value = APARTS[0].num;
     onAppNumChange();
   }
 }
@@ -417,20 +412,13 @@ function onAppNumChange() {
   const sel = document.getElementById('form_app_num');
   if (!sel) return;
   const num = sel.value;
-  const aparts = loadAparts();
-  const found = aparts.find(r => r.num === num);
+  const found = APARTS.find(r => r.num === num);
   if (found) {
     document.getElementById('app-type').value = found.type || '';
-    document.getElementById('form_locataire').value = found.loc || '';
+    document.getElementById('form_locataire').value = found.locataire || '';
     document.getElementById('form_montant').value = found.loyer || '';
     document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const sel = document.getElementById('form_app_num');
-  if (sel) {
-    sel.addEventListener('change', onAppNumChange);
-    buildAppNumList();
-  }
-});
+document
