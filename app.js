@@ -421,4 +421,10 @@ function onAppNumChange() {
   }
 }
 
-document
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('form_app_num');
+  if (sel) {
+    sel.addEventListener('change', onAppNumChange);
+    buildAppNumList();
+  }
+});
