@@ -76,17 +76,18 @@
   <strong>Appartement</strong>
   <div style="display:grid; gap:8px; grid-template-columns: 1fr 1fr;">
     <label>Numéro
-      <select id="app-num"></select>
+      <select id="form_app_num"></select>
     </label>
     <label>Type (F2/F3/F4…)
       <input id="app-type" type="text" placeholder="ex: F3" />
     </label>
     <label>Locataire
-      <input id="app-loc" type="text" placeholder="Nom du locataire" />
+      <input id="form_locataire" type="text" placeholder="Nom du locataire" />
     </label>
   </div>
   <p class="muted" style="margin:6px 0 0">👉 Le montant et la date sont aussi pré-remplis automatiquement (mais modifiables).</p>
 </div>
+
 
 <!-- puis ton <label>Date> existant -->
 
@@ -163,7 +164,7 @@
     document.addEventListener('DOMContentLoaded', () => openTab('synthese', document.querySelector('.tablink')));
   </script>
 
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 
   <!-- Service Worker pour PWA -->
   <script>
@@ -173,6 +174,7 @@
   </script>
 </body>
 </html>
+
 
 
 
