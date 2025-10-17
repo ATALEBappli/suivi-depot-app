@@ -19,6 +19,14 @@ document.addEventListener('DOMContentLoaded', () => {
   openTab('synthese', defaultBtn);
 });
 
+function setBusy(on, msg) {
+  const el = document.getElementById('busy');
+  if (!el) return;
+  const p = document.getElementById('busy-msg');
+  if (p && msg) p.textContent = msg;
+  el.hidden = !on;
+}
+
 /****************************** Utilitaires ******************************/
 function jsonp(url) {
   return new Promise((resolve, reject) => {
@@ -106,6 +114,8 @@ function renderTable() {
 
 async function load() {
   try {
+    setBusy(true, 'Chargement des données…');     // <-- AJOUT
+
     const data = await jsonp(window.API_URL);
     if (!data || !data.ok) throw new Error((data && data.error) || 'Réponse invalide');
 
@@ -120,8 +130,11 @@ async function load() {
   } catch (e) {
     const k = document.querySelector('#kpis');
     if (k) k.textContent = 'Erreur de chargement : ' + e.message;
+  } finally {
+    setBusy(false);                                 // <-- AJOUT
   }
 }
+
 
 ['#mois', '#type', '#sous_bloc'].forEach(sel => {
   document.addEventListener('change', ev => {
@@ -428,3 +441,4 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAppNumList();
   }
 });
+
