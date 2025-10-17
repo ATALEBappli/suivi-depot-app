@@ -143,3 +143,42 @@ header { z-index: auto !important; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 
+/* ===== Toasts ===== */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: grid;
+  gap: 8px;
+  width: min(92vw, 520px);
+  pointer-events: none; /* clics traversants */
+}
+
+.toast {
+  pointer-events: auto;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.15);
+  background: #222;
+  color: #fff;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: toast-in .2s ease-out forwards, toast-out .2s ease-in forwards 4.2s;
+}
+
+.toast.success { background: #166534; }   /* vert */
+.toast.error   { background: #7f1d1d; }   /* rouge */
+.toast.info    { background: #1f2937; }   /* gris foncé */
+
+@keyframes toast-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+
+
