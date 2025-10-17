@@ -89,6 +89,23 @@
 </div>
 
 
+    <div id="loc-extra" style="display:none; padding:10px; margin:10px 0; border:1px dashed #ccc; border-radius:8px;">
+  <strong>Locaux</strong>
+  <div style="display:grid; gap:8px; grid-template-columns: 1fr 1fr;">
+    <label>Code
+      <select id="form_loc_code"></select>
+    </label>
+    <label>Nom
+      <input id="loc-nom" type="text" placeholder="ex: Local RDC" />
+    </label>
+    <label>Locataire
+      <input id="form_locataire_loc" type="text" placeholder="Nom du locataire" />
+    </label>
+  </div>
+  <p class="muted" style="margin:6px 0 0">👉 Le montant et la date sont aussi pré-remplis automatiquement (mais modifiables).</p>
+</div>
+
+
 <!-- puis ton <label>Date> existant -->
 
 
@@ -133,6 +150,30 @@
     </div>
   </article>
 
+  <!-- Bloc 1 : Locaux -->
+  <article class="card">
+  <h3>🏬 Locaux</h3>
+  <p class="muted">Gère ici la liste des locaux (Code, Nom, Locataire, Loyer). Ces données servent au pré-remplissage dans <em>Saisie</em> quand tu choisis Entrée → Locaux.</p>
+
+  <div style="margin:8px 0">
+    <button id="cfg-loc-add">➕ Ajouter un local</button>
+    <button id="cfg-loc-save">💾 Sauvegarder</button>
+    <span id="cfg-loc-msg" class="muted"></span>
+  </div>
+
+  <div class="table-wrap">
+    <table id="cfg-loc-table">
+      <thead>
+        <tr>
+          <th>Code</th><th>Nom</th><th>Locataire</th><th>Loyer (€)</th><th></th>
+        </tr>
+      </thead>
+      <tbody><!-- rempli par JS --></tbody>
+    </table>
+  </div>
+</article>
+
+
   <!-- 🔜 Blocs à venir : Locaux, Impôts, etc. -->
   <!-- <article class="card"><h3>🏬 Locaux</h3> … </article> -->
 </section>
@@ -146,7 +187,7 @@
     
   </script>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 
   <!-- Service Worker pour PWA -->
   <script>
@@ -163,6 +204,7 @@
 </div>
 </body>
 </html>
+
 
 
 
