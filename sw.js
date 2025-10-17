@@ -1,94 +1,49 @@
-// sw.js — Service Worker minimal pour Suivi Depot (PWA)
-const VERSION = 'v1.0.0';
-const STATIC_CACHE = `suividepot-static-${VERSION}`;
+// --- Service Worker: v5 (change ce numéro si tu réédites) ---
+const SW_VERSION = 'v5';
+const CACHE = 'suivi-depot-' + SW_VERSION;
 
-// Fichiers statiques à pré-cacher (optionnel mais conseillé)
-const STATIC_ASSETS = [
+// Optionnel: cache de quelques assets statiques
+const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
-  './manifest.json',
+  './app.js?v=16', // <-- mets la même version que dans index.html
 ];
 
-// 1) Installation : met en cache les assets statiques
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(()=>{}));
   self.skipWaiting();
 });
 
-// 2) Activation : nettoie les anciens caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== STATIC_CACHE ? caches.delete(k) : null)))
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-// 3) Fetch : stratégies de cache
 self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  const url = new URL(req.url);
+  const url = new URL(event.request.url);
 
-  // 👉 Ne JAMAIS mettre en cache les appels à l’API Google Apps Script
-  // (souvent …/macros/s/.../exec) pour éviter les données périmées.
-  if (url.pathname.includes('/macros/s/') && url.pathname.endsWith('/exec')) {
-    event.respondWith(fetchWithNoStore(req));
-    return;
+  // ✅ NE PAS INTERCEPTER les requêtes externes (autres domaines)
+  // (et en particulier script.google.com / googleusercontent.com)
+  if (url.origin !== self.location.origin) {
+    return; // on laisse le réseau faire (pas de respondWith)
   }
 
-  // Pour tout le reste : stratégie Network First avec fallback cache
-  event.respondWith(networkFirst(req));
-});
-
-// ---- Helpers ----
-
-// Force no-cache / no-store pour l’API
-async function fetchWithNoStore(request) {
-  const noStoreReq = new Request(request, {
-    cache: 'no-store',
-    headers: { 'pragma': 'no-cache', 'cache-control': 'no-cache' },
-  });
-  try {
-    return await fetch(noStoreReq);
-  } catch (e) {
-    // En cas d’offline, renvoie un JSON d’erreur simple
-    return new Response(
-      JSON.stringify({ ok: false, error: 'offline', message: 'API non accessible hors-ligne' }),
-      { status: 503, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-// Réseau d’abord, sinon cache (pour HTML/CSS/JS)
-async function networkFirst(request) {
-  try {
-    const fresh = await fetch(request);
-    // Optionnel : on met à jour le cache pour les fichiers statiques seulement
-    if (request.method === 'GET' && isStatic(request.url)) {
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, fresh.clone());
-    }
-    return fresh;
-  } catch {
-    const cached = await caches.match(request, { ignoreSearch: true });
-    if (cached) return cached;
-    // Fallback très simple si rien
-    return new Response('Offline', { status: 503, statusText: 'Offline' });
-  }
-}
-
-function isStatic(url) {
-  return (
-    url.endsWith('/') ||
-    url.endsWith('.html') ||
-    url.endsWith('.css') ||
-    url.endsWith('.js') ||
-    url.endsWith('.json')
+  // Pour nos fichiers statiques du même domaine :
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((resp) => {
+        if (event.request.method === 'GET') {
+          const clone = resp.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, clone));
+        }
+        return resp;
+      });
+    })
   );
-}
-
+});
