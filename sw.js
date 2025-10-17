@@ -1,5 +1,5 @@
-// --- Service Worker: v5 (change ce numéro si tu réédites) ---
-const SW_VERSION = 'v5';
+// --- Service Worker: v20 (change ce numéro si tu réédites) ---
+const SW_VERSION = 'v20';
 const CACHE = 'suivi-depot-' + SW_VERSION;
 
 // Optionnel: cache de quelques assets statiques
@@ -47,3 +47,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
