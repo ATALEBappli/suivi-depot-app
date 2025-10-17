@@ -4,10 +4,11 @@ function openTab(id, btn) {
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
 
-  // Si on ouvre Saisie : rafraîchir les sous-blocs + bloc APP
+  // Si on ouvre Saisie : rafraîchir les sous-blocs + blocs APP/LOC
   if (id === 'saisie') {
     if (typeof populateFormSousBloc === 'function') populateFormSousBloc();
     if (typeof toggleAppExtra === 'function') toggleAppExtra();
+    if (typeof toggleLocExtra === 'function') toggleLocExtra();
   }
 
   document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
@@ -19,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   openTab('synthese', defaultBtn);
 });
 
-/* Loader overlay */
+/******** Loader overlay ********/
 function setBusy(on, msg) {
   const el = document.getElementById('busy');
   if (!el) return;
@@ -140,186 +141,18 @@ async function load() {
     if (ev.target.matches(sel)) applyFilters();
   });
 });
-
 load();
 
-/****************************** Saisie ******************************/
-(function () {
-  const form = document.getElementById('saisieForm');
-  if (!form) return;
-
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-
-    // 1) Récupérer les valeurs
-    const type = document.getElementById('form_type').value.trim();
-    const sbSel = document.getElementById('form_sous_bloc').value;
-    const sbOther = (document.getElementById('form_sous_bloc_other')?.value || '').trim();
-    const sous_bloc = sbSel === '__autre__' ? sbOther : sbSel;
-
-    let date = document.getElementById('form_date').value; // yyyy-mm-dd
-    const montantStr = document.getElementById('form_montant').value;
-    let description = document.getElementById('form_description').value.trim();
-
-    // Champs spécifiques APP
-    let local = '';
-    let locataire = '';
-
-    if (type === 'Entrée' && sous_bloc === 'APP') {
-      const num = document.getElementById('form_app_num')?.value || '';
-      const appType = document.getElementById('app-type')?.value || '';
-      locataire = (document.getElementById('form_locataire')?.value || '').trim();
-
-      local = num ? `APP ${num} ${appType}`.trim() : 'APP';
-
-      if (!date) date = new Date().toISOString().slice(0, 10);
-      if (!description) {
-        const mois = (date || new Date().toISOString().slice(0, 10)).slice(0, 7);
-        description = `Loyer ${mois}`;
-      }
-    }
-
-    // 2) Validations
-    if (!type || !date || !montantStr) {
-      alert('Merci de renseigner au moins : Type, Date et Montant.');
-      return;
-    }
-    if (sbSel === '__autre__' && !sbOther) {
-      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
-      return;
-    }
-
-    const montant = Number(String(montantStr).replace(',', '.'));
-    if (Number.isNaN(montant)) {
-      alert("Le montant n'est pas un nombre valide.");
-      return;
-    }
-
-    const finalDescription =
-      description || (type === 'Entrée' && sous_bloc === 'APP' ? `Loyer ${date.slice(0, 7)}` : '');
-
-    // 3) Appel API (JSONP)
-    const params = new URLSearchParams({
-      action: 'add',
-      type,
-      sous_bloc,
-      date,
-      montant: String(montant),
-      description: finalDescription,
-      local,
-      locataire
-    });
-
-    const submitBtn = form.querySelector('button[type="submit"]');
-
-    try {
-      // Loader + désactiver le bouton pour éviter les doubles clics
-      submitBtn?.setAttribute('disabled', 'disabled');
-      setBusy(true, 'Enregistrement en cours…');
-
-      const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + params.toString();
-      const res = await jsonp(url);
-      if (!res || !res.ok) throw new Error((res && res.error) || "Réponse d'ajout invalide");
-
-      // 4) Reset + fermeture bloc APP + date du jour
-      form.reset();
-      toggleAppExtra(false);
-      document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
-
-      // 5) MAJ locale (pour ré-afficher direct dans la synthèse)
-      const newRow = {
-        type,
-        sous_bloc,
-        date,
-        montant,
-        description: finalDescription,
-        local,
-        locataire,
-        _mois: date.slice(0, 7)
-      };
-      RAW.push(newRow);
-      fillFilters();
-      applyFilters();
-
-      // 6) Retour synthèse + message
-      openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
-      alert('✅ Opération enregistrée !');
-    } catch (e) {
-      alert('❌ Erreur d\'enregistrement : ' + e.message);
-    } finally {
-      setBusy(false);
-      submitBtn?.removeAttribute('disabled');
-    }
-  });
-})();   // <<< FERMETURE DE L’IIFE (c’était ce qui manquait !)
-
-/******** Sous-blocs dynamiques (Saisie) ********/
-const FORM_SB_OPTIONS = {
-  Entrée: ['Locaux', 'APP', 'Consigne', 'Entrées divers'],
-  Sortie: ['Salaire', 'Maintenance', 'Impôts et assurance', 'Électricité, Eau et Téléphone', 'Donation, Famille et divers', 'Hadem']
-};
-
-function toggleOther(forceShow) {
-  const sel = document.getElementById('form_sous_bloc');
-  const wrap = document.getElementById('other_wrap');
-  const show = forceShow ?? (sel && sel.value === '__autre__');
-  if (wrap) wrap.style.display = show ? 'block' : 'none';
-  if (!show) {
-    const o = document.getElementById('form_sous_bloc_other');
-    if (o) o.value = '';
-  }
-}
-
-function populateFormSousBloc() {
-  const type = document.getElementById('form_type')?.value || 'Entrée';
-  const sel = document.getElementById('form_sous_bloc');
-  if (!sel) return;
-
-  const opts = FORM_SB_OPTIONS[type] || [];
-  sel.innerHTML = opts.map(v => `<option value="${v}">${v}</option>`).join('') + `<option value="__autre__">Autre…</option>`;
-  sel.value = opts[0] || '__autre__';
-  toggleOther(false);
-  toggleAppExtra(); // afficher/cacher le bloc APP si besoin
-}
-
-function toggleAppExtra(force) {
-  const type = document.getElementById('form_type')?.value;
-  const sous = document.getElementById('form_sous_bloc')?.value;
-  const extra = document.getElementById('app-extra');
-  if (!extra) return;
-
-  const show = force !== undefined ? force : (type === 'Entrée' && sous === 'APP');
-  extra.style.display = show ? 'block' : 'none';
-
-  if (show) {
-    buildAppNumList();
-    onAppNumChange();
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  if (document.getElementById('form_type')) {
-    populateFormSousBloc();
-    document.getElementById('form_type').addEventListener('change', populateFormSousBloc);
-  }
-  if (document.getElementById('form_sous_bloc')) {
-    document.getElementById('form_sous_bloc').addEventListener('change', () => {
-      toggleOther();
-      toggleAppExtra();
-    });
-  }
-});
-
-window.populateFormSousBloc = populateFormSousBloc;
-
-/**************** Paramétrage : Appartements via API Google Sheets ****************/
+/**************** Paramétrage : Appartements + Locaux via API Google Sheets ****************/
 let APARTS = [];
+let LOCAUX  = [];
 
-async function apiReadAparts() {
+// lit toute la config: {logements, locaux}
+async function apiReadConfigAll() {
   const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&what=all';
   const res = await jsonp(url);
   if (!res || !res.ok) throw new Error((res && res.error) || 'config read failed');
-  return res.config?.logements || [];
+  return res.config || { logements: [], locaux: [] };
 }
 
 async function apiSaveAparts(rows) {
@@ -329,6 +162,14 @@ async function apiSaveAparts(rows) {
   if (!res || !res.ok) throw new Error((res && res.error) || 'config save failed');
 }
 
+async function apiSaveLocaux(rows) {
+  const payload = encodeURIComponent(JSON.stringify(rows || []));
+  const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&save=locaux&payload=' + payload;
+  const res = await jsonp(url);
+  if (!res || !res.ok) throw new Error((res && res.error) || 'config save failed');
+}
+
+/*** Paramétrage Appartements ***/
 function renderApartsTable() {
   const tbody = document.querySelector('#cfg-log-table tbody');
   if (!tbody) return;
@@ -374,7 +215,55 @@ function addApartRow() {
   tbody.appendChild(tr);
 }
 
+/*** Paramétrage Locaux ***/
+function renderLocauxTable() {
+  const tbody = document.querySelector('#cfg-loc-table tbody');
+  if (!tbody) return;
+  const rows = LOCAUX;
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr data-i="${i}">
+      <td><input name="code"  type="text"  value="${r.code ?? ''}"        placeholder="L1"          style="width:80px"></td>
+      <td><input name="nom"   type="text"  value="${r.nom ?? ''}"         placeholder="Local RDC"   style="min-width:200px"></td>
+      <td><input name="loc"   type="text"  value="${r.locataire ?? ''}"   placeholder="Locataire"   style="min-width:200px"></td>
+      <td><input name="loyer" type="number" step="0.01" value="${r.loyer ?? ''}" placeholder="€"   style="width:120px"></td>
+      <td><button type="button" class="rm">✖</button></td>
+    </tr>
+  `).join('');
+}
+
+function collectLocauxFromDOM() {
+  const rows = [];
+  document.querySelectorAll('#cfg-loc-table tbody tr').forEach(tr => {
+    const code  = tr.querySelector('input[name="code"]')?.value.trim() || '';
+    const nom   = tr.querySelector('input[name="nom"]')?.value.trim() || '';
+    const loc   = tr.querySelector('input[name="loc"]')?.value.trim() || '';
+    const loyer = tr.querySelector('input[name="loyer"]')?.value || '';
+    rows.push({
+      code,
+      nom,
+      locataire: loc,
+      loyer: Number(String(loyer).replace(',', '.')) || 0,
+    });
+  });
+  return rows;
+}
+
+function addLocRow() {
+  const tbody = document.querySelector('#cfg-loc-table tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input name="code"  type="text"  placeholder="L1"          style="width:80px"></td>
+    <td><input name="nom"   type="text"  placeholder="Local RDC"   style="min-width:200px"></td>
+    <td><input name="loc"   type="text"  placeholder="Locataire"   style="min-width:200px"></td>
+    <td><input name="loyer" type="number" step="0.01" placeholder="€" style="width:120px"></td>
+    <td><button type="button" class="rm">✖</button></td>`;
+  tbody.appendChild(tr);
+}
+
+/*** Attache les handlers Paramétrage ***/
 function attachParamHandlers() {
+  // Appartements
   const addBtn = document.getElementById('cfg-log-add');
   if (addBtn) addBtn.addEventListener('click', addApartRow);
 
@@ -386,7 +275,8 @@ function attachParamHandlers() {
         setBusy(true, 'Sauvegarde du paramétrage…');
         const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
         await apiSaveAparts(rows);
-        APARTS = await apiReadAparts();
+        const all = await apiReadConfigAll();
+        APARTS = all.logements || [];
         renderApartsTable();
         if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
       } catch (e) {
@@ -397,9 +287,43 @@ function attachParamHandlers() {
     });
   }
 
-  const tbody = document.querySelector('#cfg-log-table tbody');
-  if (tbody) {
-    tbody.addEventListener('click', e => {
+  const tbodyA = document.querySelector('#cfg-log-table tbody');
+  if (tbodyA) {
+    tbodyA.addEventListener('click', e => {
+      if (e.target instanceof Element && e.target.classList.contains('rm')) {
+        e.preventDefault();
+        e.target.closest('tr')?.remove();
+      }
+    });
+  }
+
+  // Locaux
+  const addLoc = document.getElementById('cfg-loc-add');
+  if (addLoc) addLoc.addEventListener('click', addLocRow);
+
+  const saveLoc = document.getElementById('cfg-loc-save');
+  if (saveLoc) {
+    saveLoc.addEventListener('click', async () => {
+      const msg = document.getElementById('cfg-loc-msg');
+      try {
+        setBusy(true, 'Sauvegarde des locaux…');
+        const rows = collectLocauxFromDOM().filter(r => r.code || r.nom || r.locataire || r.loyer);
+        await apiSaveLocaux(rows);
+        const all = await apiReadConfigAll();
+        LOCAUX = all.locaux || [];
+        renderLocauxTable();
+        if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
+      } catch (e) {
+        if (msg) msg.textContent = 'Erreur: ' + e.message;
+      } finally {
+        setBusy(false);
+      }
+    });
+  }
+
+  const tbodyL = document.querySelector('#cfg-loc-table tbody');
+  if (tbodyL) {
+    tbodyL.addEventListener('click', e => {
       if (e.target instanceof Element && e.target.classList.contains('rm')) {
         e.preventDefault();
         e.target.closest('tr')?.remove();
@@ -409,19 +333,24 @@ function attachParamHandlers() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  if (document.getElementById('cfg-log-table')) {
+  // si la page Paramétrage est présente
+  if (document.getElementById('cfg-log-table') || document.getElementById('cfg-loc-table')) {
     try {
-      APARTS = await apiReadAparts();   // charge depuis Google Sheets
+      const all = await apiReadConfigAll();
+      APARTS = all.logements || [];
+      LOCAUX = all.locaux || [];
     } catch (e) {
-      console.warn('Chargement logements:', e);
+      console.warn('Chargement config:', e);
       APARTS = [];
+      LOCAUX = [];
     }
     renderApartsTable();
+    renderLocauxTable();
     attachParamHandlers();
   }
 });
 
-/******************* Saisie : Appartements (auto-remplissage) *******************/
+/******************* Saisie : auto-remplissages *******************/
 function buildAppNumList() {
   const sel = document.getElementById('form_app_num');
   if (!sel) return;
@@ -431,7 +360,6 @@ function buildAppNumList() {
     onAppNumChange();
   }
 }
-
 function onAppNumChange() {
   const sel = document.getElementById('form_app_num');
   if (!sel) return;
@@ -445,10 +373,215 @@ function onAppNumChange() {
   }
 }
 
+function buildLocList() {
+  const sel = document.getElementById('form_loc_code');
+  if (!sel) return;
+  sel.innerHTML = LOCAUX.map(r => `<option value="${r.code}">${r.code}</option>`).join('');
+  if (LOCAUX.length > 0) {
+    sel.value = LOCAUX[0].code;
+    onLocChange();
+  }
+}
+function onLocChange() {
+  const sel = document.getElementById('form_loc_code');
+  if (!sel) return;
+  const code = sel.value;
+  const found = LOCAUX.find(r => r.code === code);
+  if (found) {
+    document.getElementById('loc-nom').value = found.nom || '';
+    document.getElementById('form_locataire_loc').value = found.locataire || '';
+    document.getElementById('form_montant').value = found.loyer || '';
+    document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const sel = document.getElementById('form_app_num');
-  if (sel) {
-    sel.addEventListener('change', onAppNumChange);
+  const selApp = document.getElementById('form_app_num');
+  if (selApp) {
+    selApp.addEventListener('change', onAppNumChange);
     buildAppNumList();
   }
+
+  const selLoc = document.getElementById('form_loc_code');
+  if (selLoc) {
+    selLoc.addEventListener('change', onLocChange);
+    buildLocList();
+  }
 });
+
+/******** Sous-blocs dynamiques (Saisie) ********/
+const FORM_SB_OPTIONS = {
+  Entrée: ['Locaux', 'APP', 'Consigne', 'Entrées divers'],
+  Sortie: ['Salaire', 'Maintenance', 'Impôts et assurance', 'Électricité, Eau et Téléphone', 'Donation, Famille et divers', 'Hadem']
+};
+
+function toggleOther(forceShow) {
+  const sel = document.getElementById('form_sous_bloc');
+  const wrap = document.getElementById('other_wrap');
+  const show = forceShow ?? (sel && sel.value === '__autre__');
+  if (wrap) wrap.style.display = show ? 'block' : 'none';
+  if (!show) {
+    const o = document.getElementById('form_sous_bloc_other');
+    if (o) o.value = '';
+  }
+}
+
+function toggleAppExtra(force) {
+  const type = document.getElementById('form_type')?.value;
+  const sous = document.getElementById('form_sous_bloc')?.value;
+  const extra = document.getElementById('app-extra');
+  if (!extra) return;
+  const show = force !== undefined ? force : (type === 'Entrée' && sous === 'APP');
+  extra.style.display = show ? 'block' : 'none';
+  if (show) { buildAppNumList(); onAppNumChange(); }
+}
+
+function toggleLocExtra(force) {
+  const type = document.getElementById('form_type')?.value;
+  const sous = document.getElementById('form_sous_bloc')?.value;
+  const extra = document.getElementById('loc-extra');
+  if (!extra) return;
+  const show = force !== undefined ? force : (type === 'Entrée' && sous === 'Locaux');
+  extra.style.display = show ? 'block' : 'none';
+  if (show) { buildLocList(); onLocChange(); }
+}
+
+function populateFormSousBloc() {
+  const type = document.getElementById('form_type')?.value || 'Entrée';
+  const sel = document.getElementById('form_sous_bloc');
+  if (!sel) return;
+
+  const opts = FORM_SB_OPTIONS[type] || [];
+  sel.innerHTML = opts.map(v => `<option value="${v}">${v}</option>`).join('') + `<option value="__autre__">Autre…</option>`;
+  sel.value = opts[0] || '__autre__';
+  toggleOther(false);
+  toggleAppExtra();
+  toggleLocExtra();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.getElementById('form_type')) {
+    populateFormSousBloc();
+    document.getElementById('form_type').addEventListener('change', populateFormSousBloc);
+  }
+  if (document.getElementById('form_sous_bloc')) {
+    document.getElementById('form_sous_bloc').addEventListener('change', () => {
+      toggleOther();
+      toggleAppExtra();
+      toggleLocExtra();
+    });
+  }
+});
+window.populateFormSousBloc = populateFormSousBloc;
+
+/****************************** Saisie : submit ******************************/
+(function () {
+  const form = document.getElementById('saisieForm');
+  if (!form) return;
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+
+    // 1) Récupérer les valeurs
+    const type = document.getElementById('form_type').value.trim();
+    const sbSel = document.getElementById('form_sous_bloc').value;
+    const sbOther = (document.getElementById('form_sous_bloc_other')?.value || '').trim();
+    const sous_bloc = sbSel === '__autre__' ? sbOther : sbSel;
+
+    let date = document.getElementById('form_date').value; // yyyy-mm-dd
+    const montantStr = document.getElementById('form_montant').value;
+    let description = document.getElementById('form_description').value.trim();
+
+    // Champs spécifiques
+    let local = '';
+    let locataire = '';
+
+    // APP
+    if (type === 'Entrée' && sous_bloc === 'APP') {
+      const num = document.getElementById('form_app_num')?.value || '';
+      const appType = document.getElementById('app-type')?.value || '';
+      locataire = (document.getElementById('form_locataire')?.value || '').trim();
+      local = num ? `APP ${num} ${appType}`.trim() : 'APP';
+      if (!date) date = new Date().toISOString().slice(0, 10);
+      if (!description) {
+        const mois = (date || new Date().toISOString().slice(0, 10)).slice(0, 7);
+        description = `Loyer ${mois}`;
+      }
+    }
+
+    // LOCAUX
+    if (type === 'Entrée' && sous_bloc === 'Locaux') {
+      const code = document.getElementById('form_loc_code')?.value || '';
+      const nom  = document.getElementById('loc-nom')?.value || '';
+      locataire  = (document.getElementById('form_locataire_loc')?.value || '').trim();
+      local = (code || nom) ? `LOC ${code} ${nom}`.trim() : 'Locaux';
+      if (!date) date = new Date().toISOString().slice(0, 10);
+      if (!description) {
+        const mois = (date || new Date().toISOString().slice(0, 10)).slice(0, 7);
+        description = `Loyer ${mois}`;
+      }
+    }
+
+    // 2) Validations
+    if (!type || !date || !montantStr) {
+      alert('Merci de renseigner au moins : Type, Date et Montant.');
+      return;
+    }
+    if (sbSel === '__autre__' && !sbOther) {
+      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
+      return;
+    }
+
+    const montant = Number(String(montantStr).replace(',', '.'));
+    if (Number.isNaN(montant)) {
+      alert("Le montant n'est pas un nombre valide.");
+      return;
+    }
+
+    const finalDescription =
+      description || (type === 'Entrée' && (sous_bloc === 'APP' || sous_bloc === 'Locaux') ? `Loyer ${date.slice(0, 7)}` : '');
+
+    // 3) Appel API (JSONP)
+    const params = new URLSearchParams({
+      action: 'add',
+      type,
+      sous_bloc,
+      date,
+      montant: String(montant),
+      description: finalDescription,
+      local,
+      locataire
+    });
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    try {
+      submitBtn?.setAttribute('disabled', 'disabled');
+      setBusy(true, 'Enregistrement en cours…');
+
+      const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + params.toString();
+      const res = await jsonp(url);
+      if (!res || !res.ok) throw new Error((res && res.error) || "Réponse d'ajout invalide");
+
+      // Reset + date du jour
+      form.reset();
+      toggleAppExtra(false);
+      toggleLocExtra(false);
+      document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
+
+      // MAJ locale
+      const newRow = { type, sous_bloc, date, montant, description: finalDescription, local, locataire, _mois: date.slice(0, 7) };
+      RAW.push(newRow);
+      fillFilters();
+      applyFilters();
+
+      openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
+      alert('✅ Opération enregistrée !');
+    } catch (e) {
+      alert('❌ Erreur d\'enregistrement : ' + e.message);
+    } finally {
+      setBusy(false);
+      submitBtn?.removeAttribute('disabled');
+    }
+  });
+})();
