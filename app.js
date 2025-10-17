@@ -29,6 +29,24 @@ function setBusy(on, msg) {
   el.hidden = !on;
 }
 
+/* ===== Toast utilitaire ===== */
+function showToast(message, type = 'info', duration = 4200) {
+  const wrap = document.getElementById('toast');
+  if (!wrap) return alert(message); // fallback si pas de div
+
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.role = 'status';
+  el.textContent = message;
+
+  // clic pour fermer
+  el.addEventListener('click', () => el.remove());
+
+  wrap.appendChild(el);
+  // auto-remove après la durée d’anim (CSS toast-out = démarre à 4.2s)
+  setTimeout(() => el.remove(), duration + 400);
+}
+
 /****************************** Utilitaires ******************************/
 function jsonp(url) {
   return new Promise((resolve, reject) => {
@@ -527,6 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.populateFormSousBloc = populateFormSousBloc;
 
 /****************************** Saisie : submit ******************************/
+/* ===== Remplacement complet du submit handler (toasts + loader) ===== */
 (function () {
   const form = document.getElementById('saisieForm');
   if (!form) return;
@@ -548,7 +567,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     let local = '';
     let locataire = '';
 
-    // APP
+    // APP (Entrée → APP)
     if (type === 'Entrée' && sous_bloc === 'APP') {
       const num = document.getElementById('form_app_num')?.value || '';
       const appType = document.getElementById('app-type')?.value || '';
@@ -561,7 +580,7 @@ window.populateFormSousBloc = populateFormSousBloc;
       }
     }
 
-    // LOCAUX
+    // LOCAUX (Entrée → Locaux) — si tu as déjà ajouté ce bloc
     if (type === 'Entrée' && sous_bloc === 'Locaux') {
       const code = document.getElementById('form_loc_code')?.value || '';
       const nom  = document.getElementById('loc-nom')?.value || '';
@@ -574,19 +593,22 @@ window.populateFormSousBloc = populateFormSousBloc;
       }
     }
 
-    // 2) Validations
+    // 2) Validations → toasts
     if (!type || !date || !montantStr) {
-      alert('Merci de renseigner au moins : Type, Date et Montant.');
+      showToast('Merci de renseigner au moins : Type, Date et Montant.', 'error');
+      (document.getElementById('form_montant') || document.getElementById('form_date'))?.focus();
       return;
     }
     if (sbSel === '__autre__' && !sbOther) {
-      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
+      showToast("Merci de préciser le sous-bloc (champ 'Autre…').", 'error');
+      document.getElementById('form_sous_bloc_other')?.focus();
       return;
     }
 
     const montant = Number(String(montantStr).replace(',', '.'));
     if (Number.isNaN(montant)) {
-      alert("Le montant n'est pas un nombre valide.");
+      showToast("Le montant n'est pas un nombre valide.", 'error');
+      document.getElementById('form_montant')?.focus();
       return;
     }
 
@@ -608,6 +630,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     const submitBtn = form.querySelector('button[type="submit"]');
 
     try {
+      // Loader + anti double-clic
       submitBtn?.setAttribute('disabled', 'disabled');
       setBusy(true, 'Enregistrement en cours…');
 
@@ -615,26 +638,28 @@ window.populateFormSousBloc = populateFormSousBloc;
       const res = await jsonp(url);
       if (!res || !res.ok) throw new Error((res && res.error) || "Réponse d'ajout invalide");
 
-      // Reset + date du jour
+      // 4) Reset + refermer les blocs spécifiques + date du jour
       form.reset();
-      toggleAppExtra(false);
-      toggleLocExtra(false);
+      if (typeof toggleAppExtra === 'function') toggleAppExtra(false);
+      if (typeof toggleLocExtra === 'function') toggleLocExtra(false);
       document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
 
-      // MAJ locale
+      // 5) MAJ locale (réafficher direct dans la synthèse)
       const newRow = { type, sous_bloc, date, montant, description: finalDescription, local, locataire, _mois: date.slice(0, 7) };
       RAW.push(newRow);
       fillFilters();
       applyFilters();
 
+      // 6) Retour synthèse + toast succès
       openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
-      alert('✅ Opération enregistrée !');
+      showToast('✅ Opération enregistrée !', 'success');
     } catch (e) {
-      alert('❌ Erreur d\'enregistrement : ' + e.message);
+      showToast('❌ Erreur d\'enregistrement : ' + e.message, 'error');
     } finally {
       setBusy(false);
       submitBtn?.removeAttribute('disabled');
     }
   });
 })();
+
 
