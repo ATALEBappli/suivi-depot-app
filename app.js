@@ -372,18 +372,21 @@ function attachParamHandlers() {
 
   const saveBtn = document.getElementById('cfg-log-save');
   if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      const msg = document.getElementById('cfg-log-msg');
-      try {
-        const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
-        await apiSaveAparts(rows);
-        APARTS = await apiReadAparts();
-        renderApartsTable();
-        if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
-      } catch (e) {
-        if (msg) msg.textContent = 'Erreur: ' + e.message;
-      }
-    });
+ saveBtn.addEventListener('click', async () => {
+  const msg = document.getElementById('cfg-log-msg');
+  try {
+    setBusy(true, 'Sauvegarde du paramétrage…');      // <-- AJOUT
+    const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
+    await apiSaveAparts(rows);
+    APARTS = await apiReadAparts();
+    renderApartsTable();
+    if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
+  } catch (e) {
+    if (msg) msg.textContent = 'Erreur: ' + e.message;
+  } finally {
+    setBusy(false);                                    // <-- AJOUT
+  }
+});
   }
 
   const tbody = document.querySelector('#cfg-log-table tbody');
@@ -441,4 +444,5 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAppNumList();
   }
 });
+
 
