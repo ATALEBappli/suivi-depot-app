@@ -7,7 +7,7 @@ const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js?v=16', // <-- mets la même version que dans index.html
+  './app.js?v=20', // <-- mets la même version que dans index.html
 ];
 
 self.addEventListener('install', (event) => {
@@ -47,4 +47,5 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
 
