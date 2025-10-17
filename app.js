@@ -446,6 +446,38 @@ function toggleLocExtra(force) {
   if (show) { buildLocList(); onLocChange(); }
 }
 
+/************** Saisie : Description intelligente (aperçu + auto-fill) **************/
+function computeSuggestedDescription() {
+  const type = document.getElementById('form_type')?.value || '';
+  const sous = document.getElementById('form_sous_bloc')?.value || '';
+  const date = document.getElementById('form_date')?.value || new Date().toISOString().slice(0,10);
+  const mois = (date || '').slice(0,7);
+
+  // Cas traités : Entrée → APP / Locaux
+  if (type === 'Entrée' && (sous === 'APP' || sous === 'Locaux')) {
+    return `Loyer ${mois}`;
+  }
+
+  // Fallback simple
+  return sous ? `${sous} ${mois}`.trim() : mois;
+}
+
+function updateDescHint() {
+  const hint = document.getElementById('desc-hint');
+  if (!hint) return;
+  const suggestion = computeSuggestedDescription();
+  hint.textContent = suggestion ? `💡 Suggestion : ${suggestion}` : '';
+}
+
+function maybeAutoFillDescription() {
+  const input = document.getElementById('form_description');
+  if (!input) return;
+  // Si l’utilisateur n’a rien saisi, on propose automatiquement
+  if (!input.value.trim()) {
+    input.value = computeSuggestedDescription() || '';
+  }
+}
+
 function populateFormSousBloc() {
   const type = document.getElementById('form_type')?.value || 'Entrée';
   const sel = document.getElementById('form_sous_bloc');
@@ -460,18 +492,38 @@ function populateFormSousBloc() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Initialisation des listes déroulantes et des sous-blocs
   if (document.getElementById('form_type')) {
     populateFormSousBloc();
     document.getElementById('form_type').addEventListener('change', populateFormSousBloc);
   }
+
   if (document.getElementById('form_sous_bloc')) {
     document.getElementById('form_sous_bloc').addEventListener('change', () => {
       toggleOther();
       toggleAppExtra();
       toggleLocExtra();
+      updateDescHint(); // 💡 mise à jour auto de la suggestion
     });
   }
+
+  // — Aperçu dynamique de la description —
+  ['form_type','form_sous_bloc','form_date','form_app_num','form_loc_code']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', updateDescHint);
+    });
+
+  // Quand le champ Description perd le focus : auto-remplir s’il est vide
+  const desc = document.getElementById('form_description');
+  if (desc) desc.addEventListener('blur', maybeAutoFillDescription);
+
+  // Premier affichage de la suggestion au chargement
+  updateDescHint();
 });
+
+
+
 window.populateFormSousBloc = populateFormSousBloc;
 
 /****************************** Saisie : submit ******************************/
@@ -585,3 +637,4 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
