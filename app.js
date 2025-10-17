@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   openTab('synthese', defaultBtn);
 });
 
+/* Loader overlay */
 function setBusy(on, msg) {
   const el = document.getElementById('busy');
   if (!el) return;
@@ -114,8 +115,7 @@ function renderTable() {
 
 async function load() {
   try {
-    setBusy(true, 'Chargement des données…');     // <-- AJOUT
-
+    setBusy(true, 'Chargement des données…');
     const data = await jsonp(window.API_URL);
     if (!data || !data.ok) throw new Error((data && data.error) || 'Réponse invalide');
 
@@ -131,10 +131,9 @@ async function load() {
     const k = document.querySelector('#kpis');
     if (k) k.textContent = 'Erreur de chargement : ' + e.message;
   } finally {
-    setBusy(false);                                 // <-- AJOUT
+    setBusy(false);
   }
 }
-
 
 ['#mois', '#type', '#sous_bloc'].forEach(sel => {
   document.addEventListener('change', ev => {
@@ -150,109 +149,109 @@ load();
   if (!form) return;
 
   form.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
+    ev.preventDefault();
 
-  // 1) Récupérer les valeurs
-  const type = document.getElementById('form_type').value.trim();
-  const sbSel = document.getElementById('form_sous_bloc').value;
-  const sbOther = (document.getElementById('form_sous_bloc_other')?.value || '').trim();
-  const sous_bloc = sbSel === '__autre__' ? sbOther : sbSel;
+    // 1) Récupérer les valeurs
+    const type = document.getElementById('form_type').value.trim();
+    const sbSel = document.getElementById('form_sous_bloc').value;
+    const sbOther = (document.getElementById('form_sous_bloc_other')?.value || '').trim();
+    const sous_bloc = sbSel === '__autre__' ? sbOther : sbSel;
 
-  let date = document.getElementById('form_date').value; // yyyy-mm-dd
-  const montantStr = document.getElementById('form_montant').value;
-  let description = document.getElementById('form_description').value.trim();
+    let date = document.getElementById('form_date').value; // yyyy-mm-dd
+    const montantStr = document.getElementById('form_montant').value;
+    let description = document.getElementById('form_description').value.trim();
 
-  // Champs spécifiques APP
-  let local = '';
-  let locataire = '';
+    // Champs spécifiques APP
+    let local = '';
+    let locataire = '';
 
-  if (type === 'Entrée' && sous_bloc === 'APP') {
-    const num = document.getElementById('form_app_num')?.value || '';
-    const appType = document.getElementById('app-type')?.value || '';
-    locataire = (document.getElementById('form_locataire')?.value || '').trim();
+    if (type === 'Entrée' && sous_bloc === 'APP') {
+      const num = document.getElementById('form_app_num')?.value || '';
+      const appType = document.getElementById('app-type')?.value || '';
+      locataire = (document.getElementById('form_locataire')?.value || '').trim();
 
-    local = num ? `APP ${num} ${appType}`.trim() : 'APP';
+      local = num ? `APP ${num} ${appType}`.trim() : 'APP';
 
-    if (!date) date = new Date().toISOString().slice(0, 10);
-    if (!description) {
-      const mois = (date || new Date().toISOString().slice(0, 10)).slice(0, 7);
-      description = `Loyer ${mois}`;
+      if (!date) date = new Date().toISOString().slice(0, 10);
+      if (!description) {
+        const mois = (date || new Date().toISOString().slice(0, 10)).slice(0, 7);
+        description = `Loyer ${mois}`;
+      }
     }
-  }
 
-  // 2) Validations
-  if (!type || !date || !montantStr) {
-    alert('Merci de renseigner au moins : Type, Date et Montant.');
-    return;
-  }
-  if (sbSel === '__autre__' && !sbOther) {
-    alert("Merci de préciser le sous-bloc (champ 'Autre…').");
-    return;
-  }
+    // 2) Validations
+    if (!type || !date || !montantStr) {
+      alert('Merci de renseigner au moins : Type, Date et Montant.');
+      return;
+    }
+    if (sbSel === '__autre__' && !sbOther) {
+      alert("Merci de préciser le sous-bloc (champ 'Autre…').");
+      return;
+    }
 
-  const montant = Number(String(montantStr).replace(',', '.'));
-  if (Number.isNaN(montant)) {
-    alert("Le montant n'est pas un nombre valide.");
-    return;
-  }
+    const montant = Number(String(montantStr).replace(',', '.'));
+    if (Number.isNaN(montant)) {
+      alert("Le montant n'est pas un nombre valide.");
+      return;
+    }
 
-  const finalDescription =
-    description || (type === 'Entrée' && sous_bloc === 'APP' ? `Loyer ${date.slice(0, 7)}` : '');
+    const finalDescription =
+      description || (type === 'Entrée' && sous_bloc === 'APP' ? `Loyer ${date.slice(0, 7)}` : '');
 
-  // 3) Appel API (JSONP)
-  const params = new URLSearchParams({
-    action: 'add',
-    type,
-    sous_bloc,
-    date,
-    montant: String(montant),
-    description: finalDescription,
-    local,
-    locataire
-  });
-
-  const submitBtn = form.querySelector('button[type="submit"]');
-
-  try {
-    // Loader + désactiver le bouton pour éviter les doubles clics
-    submitBtn?.setAttribute('disabled', 'disabled');
-    setBusy(true, 'Enregistrement en cours…');
-
-    const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + params.toString();
-    const res = await jsonp(url);
-    if (!res || !res.ok) throw new Error((res && res.error) || "Réponse d'ajout invalide");
-
-    // 4) Reset + fermeture bloc APP + date du jour
-    form.reset();
-    toggleAppExtra(false);
-    document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
-
-    // 5) MAJ locale (pour ré-afficher direct dans la synthèse)
-    const newRow = {
+    // 3) Appel API (JSONP)
+    const params = new URLSearchParams({
+      action: 'add',
       type,
       sous_bloc,
       date,
-      montant,
+      montant: String(montant),
       description: finalDescription,
       local,
-      locataire,
-      _mois: date.slice(0, 7)
-    };
-    RAW.push(newRow);
-    fillFilters();
-    applyFilters();
+      locataire
+    });
 
-    // 6) Retour synthèse + message
-    openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
-    alert('✅ Opération enregistrée !');
-  } catch (e) {
-    alert('❌ Erreur d\'enregistrement : ' + e.message);
-  } finally {
-    setBusy(false);
-    submitBtn?.removeAttribute('disabled');
-  }
-});
+    const submitBtn = form.querySelector('button[type="submit"]');
 
+    try {
+      // Loader + désactiver le bouton pour éviter les doubles clics
+      submitBtn?.setAttribute('disabled', 'disabled');
+      setBusy(true, 'Enregistrement en cours…');
+
+      const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + params.toString();
+      const res = await jsonp(url);
+      if (!res || !res.ok) throw new Error((res && res.error) || "Réponse d'ajout invalide");
+
+      // 4) Reset + fermeture bloc APP + date du jour
+      form.reset();
+      toggleAppExtra(false);
+      document.getElementById('form_date').value = new Date().toISOString().slice(0, 10);
+
+      // 5) MAJ locale (pour ré-afficher direct dans la synthèse)
+      const newRow = {
+        type,
+        sous_bloc,
+        date,
+        montant,
+        description: finalDescription,
+        local,
+        locataire,
+        _mois: date.slice(0, 7)
+      };
+      RAW.push(newRow);
+      fillFilters();
+      applyFilters();
+
+      // 6) Retour synthèse + message
+      openTab('synthese', document.querySelector('.tablink[data-tab="synthese"]'));
+      alert('✅ Opération enregistrée !');
+    } catch (e) {
+      alert('❌ Erreur d\'enregistrement : ' + e.message);
+    } finally {
+      setBusy(false);
+      submitBtn?.removeAttribute('disabled');
+    }
+  });
+})();   // <<< FERMETURE DE L’IIFE (c’était ce qui manquait !)
 
 /******** Sous-blocs dynamiques (Saisie) ********/
 const FORM_SB_OPTIONS = {
@@ -381,21 +380,21 @@ function attachParamHandlers() {
 
   const saveBtn = document.getElementById('cfg-log-save');
   if (saveBtn) {
- saveBtn.addEventListener('click', async () => {
-  const msg = document.getElementById('cfg-log-msg');
-  try {
-    setBusy(true, 'Sauvegarde du paramétrage…');      // <-- AJOUT
-    const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
-    await apiSaveAparts(rows);
-    APARTS = await apiReadAparts();
-    renderApartsTable();
-    if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
-  } catch (e) {
-    if (msg) msg.textContent = 'Erreur: ' + e.message;
-  } finally {
-    setBusy(false);                                    // <-- AJOUT
-  }
-});
+    saveBtn.addEventListener('click', async () => {
+      const msg = document.getElementById('cfg-log-msg');
+      try {
+        setBusy(true, 'Sauvegarde du paramétrage…');
+        const rows = collectApartsFromDOM().filter(r => r.num || r.type || r.locataire || r.loyer);
+        await apiSaveAparts(rows);
+        APARTS = await apiReadAparts();
+        renderApartsTable();
+        if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
+      } catch (e) {
+        if (msg) msg.textContent = 'Erreur: ' + e.message;
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   const tbody = document.querySelector('#cfg-log-table tbody');
@@ -453,6 +452,3 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAppNumList();
   }
 });
-
-
-
