@@ -4,11 +4,12 @@ function openTab(id, btn) {
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
 
-  // Si on ouvre Saisie : rafraîchir les sous-blocs + blocs APP/LOC
+  // Si on ouvre Saisie : rafraîchir les sous-blocs + blocs APP/LOC/HEDAM
   if (id === 'saisie') {
     if (typeof populateFormSousBloc === 'function') populateFormSousBloc();
     if (typeof toggleAppExtra === 'function') toggleAppExtra();
     if (typeof toggleLocExtra === 'function') toggleLocExtra();
+    if (typeof toggleHedamExtra === 'function') toggleHedamExtra(); // Ajout pour Hedam
   }
 
   document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
@@ -368,6 +369,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+
 /******************* Saisie : auto-remplissages *******************/
 function buildAppNumList() {
   const sel = document.getElementById('form_app_num');
@@ -661,5 +663,6 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
