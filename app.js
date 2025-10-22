@@ -49,20 +49,35 @@ function showToast(message, type = 'info', duration = 4200) {
 }
 
 /****************************** Utilitaires ******************************/
-function jsonp(url) {
+function jsonp(url, { timeoutMs = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     const cb = 'cb_' + Math.random().toString(36).slice(2);
-    const s = document.createElement('script');
-    const clean = () => {
+    const s  = document.createElement('script');
+    const where = document.head || document.body || document.documentElement;
+
+    let done = false;
+    const finish = (fn, val) => {
+      if (done) return;
+      done = true;
       try { delete window[cb]; } catch {}
-      s.remove();
+      if (s && s.parentNode) s.parentNode.removeChild(s);
+      clearTimeout(tid);
+      fn(val);
     };
-    window[cb] = data => { clean(); resolve(data); };
-    s.onerror = () => { clean(); reject(new Error('JSONP error')); };
-    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
-    document.body.appendChild(s);
+
+    window[cb] = data => finish(resolve, data);
+    s.onerror   = ()  => finish(reject, new Error('JSONP error'));
+
+    const sep = url.includes('?') ? '&' : '?';
+    s.src = `${url}${sep}callback=${cb}`;
+
+    // Sécurité: timeout
+    const tid = setTimeout(() => finish(reject, new Error('JSONP timeout')), timeoutMs);
+
+    where.appendChild(s);
   });
 }
+
 
 const fmt = n =>
   Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -160,7 +175,7 @@ async function load() {
     if (ev.target.matches(sel)) applyFilters();
   });
 });
-load();
+/***load(); ****/ 
 
 /**************** Paramétrage : Appartements + Locaux via API Google Sheets ****************/
 let APARTS = [];
@@ -747,6 +762,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
 
