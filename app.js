@@ -165,6 +165,7 @@ load();
 /**************** Paramétrage : Appartements + Locaux via API Google Sheets ****************/
 let APARTS = [];
 let LOCAUX  = [];
+let HEDAM = []; 
 
 // lit toute la config: {logements, locaux}
 async function apiReadConfigAll() {
@@ -186,6 +187,15 @@ async function apiSaveLocaux(rows) {
   const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&save=locaux&payload=' + payload;
   const res = await jsonp(url);
   if (!res || !res.ok) throw new Error((res && res.error) || 'config save failed');
+}
+
+
+async function apiSaveHedam(rows) {
+  const payload = encodeURIComponent(JSON.stringify(rows || []));
+  const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') +
+              'action=config&save=hedam&payload=' + payload;
+  const res = await jsonp(url);
+  if (!res || !res.ok) throw new Error((res && res.error) || 'hedam save failed');
 }
 
 /*** Paramétrage Appartements ***/
@@ -280,6 +290,41 @@ function addLocRow() {
   tbody.appendChild(tr);
 }
 
+function renderHedamTable() {
+  const tbody = document.querySelector('#cfg-hedam-table tbody');
+  if (!tbody) return;
+  const rows = HEDAM;
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr data-i="${i}">
+      <td><input name="code" type="text"  value="${r.code ?? ''}" placeholder="ex: PLO" style="width:90px"></td>
+      <td><input name="nom"  type="text"  value="${r.nom  ?? ''}" placeholder="ex: Plombie" style="min-width:220px"></td>
+      <td><button type="button" class="rm">✖</button></td>
+    </tr>
+  `).join('');
+}
+
+function collectHedamFromDOM() {
+  const rows = [];
+  document.querySelectorAll('#cfg-hedam-table tbody tr').forEach(tr => {
+    const code = tr.querySelector('input[name="code"]')?.value.trim() || '';
+    const nom  = tr.querySelector('input[name="nom"]') ?.value.trim() || '';
+    if (code || nom) rows.push({ code, nom });
+  });
+  return rows;
+}
+
+function addHedamRow() {
+  const tbody = document.querySelector('#cfg-hedam-table tbody');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input name="code" type="text" placeholder="ex: PLO" style="width:90px"></td>
+    <td><input name="nom"  type="text" placeholder="ex: Plombie" style="min-width:220px"></td>
+    <td><button type="button" class="rm">✖</button></td>`;
+  tbody.appendChild(tr);
+}
+
+
 /*** Attache les handlers Paramétrage ***/
 function attachParamHandlers() {
   // Appartements
@@ -349,22 +394,62 @@ function attachParamHandlers() {
       }
     });
   }
+  
+  // HÉDAM : bouton Ajouter
+  const addHedam = document.getElementById('cfg-hedam-add');
+  if (addHedam) addHedam.addEventListener('click', addHedamRow);
+
+  // HÉDAM : bouton Sauvegarder
+  const saveHedam = document.getElementById('cfg-hedam-save');
+  if (saveHedam) {
+    saveHedam.addEventListener('click', async () => {
+      const msg = document.getElementById('cfg-hedam-msg');
+      try {
+        setBusy(true, 'Sauvegarde Hédam…');
+        const rows = collectHedamFromDOM();
+        await apiSaveHedam(rows);
+        // relecture globale pour rester synchro
+        const all = await apiReadConfigAll();
+        HEDAM = all.hedam || all.hadam || []; // selon ton nommage côté GAS
+        renderHedamTable();
+        if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
+      } catch (e) {
+        if (msg) msg.textContent = 'Erreur: ' + e.message;
+      } finally {
+        setBusy(false);
+      }
+    });
+  }
+
+  // HÉDAM : bouton supprimer ligne (croix)
+  const tbodyH = document.querySelector('#cfg-hedam-table tbody');
+  if (tbodyH) {
+    tbodyH.addEventListener('click', e => {
+      if (e.target instanceof Element && e.target.classList.contains('rm')) {
+        e.preventDefault();
+        e.target.closest('tr')?.remove();
+      }
+    });
+  }
+}
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // si la page Paramétrage est présente
-  if (document.getElementById('cfg-log-table') || document.getElementById('cfg-loc-table')) {
+  if (document.getElementById('cfg-log-table') ||
+      document.getElementById('cfg-loc-table') ||
+      document.getElementById('cfg-hedam-table')) {
     try {
       const all = await apiReadConfigAll();
       APARTS = all.logements || [];
       LOCAUX = all.locaux || [];
+      HEDAM  = all.hedam || all.hadam || []; // selon clé renvoyée par doGet
     } catch (e) {
       console.warn('Chargement config:', e);
-      APARTS = [];
-      LOCAUX = [];
+      APARTS = []; LOCAUX = []; HEDAM = [];
     }
     renderApartsTable();
     renderLocauxTable();
+    renderHedamTable();     // ← AJOUT
     attachParamHandlers();
   }
 });
@@ -663,6 +748,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
 
