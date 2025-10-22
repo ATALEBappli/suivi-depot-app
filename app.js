@@ -394,7 +394,7 @@ function attachParamHandlers() {
       }
     });
   }
-  
+
   // HÉDAM : bouton Ajouter
   const addHedam = document.getElementById('cfg-hedam-add');
   if (addHedam) addHedam.addEventListener('click', addHedamRow);
@@ -408,9 +408,8 @@ function attachParamHandlers() {
         setBusy(true, 'Sauvegarde Hédam…');
         const rows = collectHedamFromDOM();
         await apiSaveHedam(rows);
-        // relecture globale pour rester synchro
         const all = await apiReadConfigAll();
-        HEDAM = all.hedam || all.hadam || []; // selon ton nommage côté GAS
+        HEDAM = all.hedam || all.hadam || []; // selon la clé renvoyée par ton doGet
         renderHedamTable();
         if (msg) { msg.textContent = 'Sauvegardé ✅'; setTimeout(() => (msg.textContent = ''), 2000); }
       } catch (e) {
@@ -421,7 +420,7 @@ function attachParamHandlers() {
     });
   }
 
-  // HÉDAM : bouton supprimer ligne (croix)
+  // HÉDAM : supprimer ligne
   const tbodyH = document.querySelector('#cfg-hedam-table tbody');
   if (tbodyH) {
     tbodyH.addEventListener('click', e => {
@@ -432,7 +431,8 @@ function attachParamHandlers() {
     });
   }
 }
-}
+
+// ⚠️ PAS d’accolade en trop ici !
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (document.getElementById('cfg-log-table') ||
@@ -442,18 +442,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       const all = await apiReadConfigAll();
       APARTS = all.logements || [];
       LOCAUX = all.locaux || [];
-      HEDAM  = all.hedam || all.hadam || []; // selon clé renvoyée par doGet
+      HEDAM  = all.hedam || all.hadam || [];
     } catch (e) {
       console.warn('Chargement config:', e);
       APARTS = []; LOCAUX = []; HEDAM = [];
     }
     renderApartsTable();
     renderLocauxTable();
-    renderHedamTable();     // ← AJOUT
+    renderHedamTable();
     attachParamHandlers();
   }
 });
-
 
 /******************* Saisie : auto-remplissages *******************/
 function buildAppNumList() {
@@ -748,6 +747,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
 
