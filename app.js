@@ -531,6 +531,26 @@ function onLocChange() {
   }
 }
 
+function buildHedamList() {
+  const sel = document.getElementById('form_hedam_code');
+  if (!sel) return;
+  sel.innerHTML = HEDAM.map(r =>
+    `<option value="${r.code}">${r.code}${r.nom ? ' — ' + r.nom : ''}</option>`
+  ).join('');
+  if (HEDAM.length > 0) sel.value = HEDAM[0].code;
+}
+
+function toggleHedamExtra(force) {
+  const type  = document.getElementById('form_type')?.value;
+  const sous  = document.getElementById('form_sous_bloc')?.value;
+  const extra = document.getElementById('hedam-extra');
+  if (!extra) return;
+  const show = force !== undefined ? force : (type === 'Sortie' && sous === 'Hadem');
+  extra.style.display = show ? 'block' : 'none';
+  if (show) buildHedamList();
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
   const selApp = document.getElementById('form_app_num');
   if (selApp) {
@@ -543,7 +563,14 @@ document.addEventListener('DOMContentLoaded', () => {
     selLoc.addEventListener('change', onLocChange);
     buildLocList();
   }
+
+  // ← AJOUT 3.c : quand on change le sous-bloc Hédam, on met à jour la suggestion
+  const selHed = document.getElementById('form_hedam_code');
+  if (selHed) {
+    selHed.addEventListener('change', updateDescHint);
+  }
 });
+
 
 /******** Sous-blocs dynamiques (Saisie) ********/
 const FORM_SB_OPTIONS = {
@@ -583,18 +610,25 @@ function toggleLocExtra(force) {
 }
 
 /************** Saisie : Description intelligente (aperçu + auto-fill) **************/
+
 function computeSuggestedDescription() {
   const type = document.getElementById('form_type')?.value || '';
   const sous = document.getElementById('form_sous_bloc')?.value || '';
   const date = document.getElementById('form_date')?.value || new Date().toISOString().slice(0,10);
   const mois = (date || '').slice(0,7);
 
-  // Cas traités : Entrée → APP / Locaux
   if (type === 'Entrée' && (sous === 'APP' || sous === 'Locaux')) {
     return `Loyer ${mois}`;
   }
 
-  // Fallback simple
+  // Sortie → Hédam : "Plomberie 2025-01" (ou code si pas de nom)
+  if (type === 'Sortie' && sous === 'Hadem') {
+    const code = document.getElementById('form_hedam_code')?.value || '';
+    const found = HEDAM.find(h => h.code === code);
+    const label = (found?.nom || code || 'Hédam');
+    return `${label} ${mois}`.trim();
+  }
+
   return sous ? `${sous} ${mois}`.trim() : mois;
 }
 
@@ -625,6 +659,7 @@ function populateFormSousBloc() {
   toggleOther(false);
   toggleAppExtra();
   toggleLocExtra();
+  toggleHedamExtra(); 
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -711,6 +746,21 @@ window.populateFormSousBloc = populateFormSousBloc;
       }
     }
 
+    // HÉDAM (Sortie → Hadem)
+if (type === 'Sortie' && sous_bloc === 'Hadem') {
+  const code = document.getElementById('form_hedam_code')?.value || '';
+  const found = HEDAM.find(h => h.code === code);
+  const nom   = found?.nom || '';
+  // On réutilise le champ "local" pour stocker l'info
+  local = code ? `HEDAM ${code} ${nom}`.trim() : 'Hédam';
+  if (!date) date = new Date().toISOString().slice(0, 10);
+  if (!description) {
+    const mois = (date || new Date().toISOString().slice(0,10)).slice(0,7);
+    description = `${nom || code || 'Hédam'} ${mois}`;
+  }
+}
+
+
     // 2) Validations → toasts
     if (!type || !date || !montantStr) {
       showToast('Merci de renseigner au moins : Type, Date et Montant.', 'error');
@@ -779,6 +829,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
 
