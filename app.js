@@ -175,6 +175,23 @@ async function load() {
     if (ev.target.matches(sel)) applyFilters();
   });
 });
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Vérifie que l’URL API est bien définie
+  if (!window.API_URL) {
+    console.warn('API_URL manquante');
+    const k = document.querySelector('#kpis');
+    if (k) k.textContent = 'Erreur: API_URL non définie';
+    return;
+  }
+  // Lance le chargement après que le DOM est prêt
+  load().catch(err => {
+    console.error(err);
+    const k = document.querySelector('#kpis');
+    if (k) k.textContent = 'Erreur de chargement : ' + err.message;
+  });
+});
+
 /***load(); ****/ 
 
 /**************** Paramétrage : Appartements + Locaux via API Google Sheets ****************/
@@ -762,6 +779,7 @@ window.populateFormSousBloc = populateFormSousBloc;
     }
   });
 })();
+
 
 
 
