@@ -531,13 +531,15 @@ function onLocChange() {
   }
 }
 
+/* === HEDAM (sorties) === */
 function buildHedamList() {
   const sel = document.getElementById('form_hedam_code');
   if (!sel) return;
+  // HEDAM attendu au format [{code:'...', nom:'...'}, ...]
   sel.innerHTML = HEDAM.map(r =>
     `<option value="${r.code}">${r.code}${r.nom ? ' — ' + r.nom : ''}</option>`
   ).join('');
-  if (HEDAM.length > 0) sel.value = HEDAM[0].code;
+  if (HEDAM.length) sel.value = HEDAM[0].code;
 }
 
 function toggleHedamExtra(force) {
@@ -545,10 +547,13 @@ function toggleHedamExtra(force) {
   const sous  = document.getElementById('form_sous_bloc')?.value;
   const extra = document.getElementById('hedam-extra');
   if (!extra) return;
-  const show = force !== undefined ? force : (type === 'Sortie' && sous === 'Hadem');
+
+  // ⚠️ orthographe : ton select "Sous-bloc" affiche bien "Hadem"
+  const show = (force !== undefined) ? force : (type === 'Sortie' && sous === 'Hadem');
   extra.style.display = show ? 'block' : 'none';
   if (show) buildHedamList();
 }
+
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -829,6 +834,7 @@ if (type === 'Sortie' && sous_bloc === 'Hadem') {
     }
   });
 })();
+
 
 
 
