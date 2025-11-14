@@ -548,8 +548,8 @@ function toggleHedamExtra(force) {
   const extra = document.getElementById('hedam-extra');
   if (!extra) return;
 
-  // ⚠️ orthographe : ton select "Sous-bloc" affiche bien "Hadem"
-  const show = (force !== undefined) ? force : (type === 'Sortie' && sous === 'Hadem');
+  // ⚠️ orthographe : ton select "Sous-bloc" affiche bien "Hedam"
+  const show = (force !== undefined) ? force : (type === 'Sortie' && sous === 'Hedam');
   extra.style.display = show ? 'block' : 'none';
   if (show) buildHedamList();
 }
@@ -580,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /******** Sous-blocs dynamiques (Saisie) ********/
 const FORM_SB_OPTIONS = {
   Entrée: ['Locaux', 'APP', 'Consigne', 'Entrées divers'],
-  Sortie: ['Salaire', 'Maintenance', 'Impôts et assurance', 'Électricité, Eau et Téléphone', 'Donation, Famille et divers', 'Hadem']
+  Sortie: ['Salaire', 'Maintenance', 'Impôts et assurance', 'Électricité, Eau et Téléphone', 'Donation, Famille et divers', 'Hedam']
 };
 
 function toggleOther(forceShow) {
@@ -627,7 +627,7 @@ function computeSuggestedDescription() {
   }
 
   // Sortie → Hédam : "Plomberie 2025-01" (ou code si pas de nom)
-  if (type === 'Sortie' && sous === 'Hadem') {
+  if (type === 'Sortie' && sous === 'Hedam') {
     const code = document.getElementById('form_hedam_code')?.value || '';
     const found = HEDAM.find(h => h.code === code);
     const label = (found?.nom || code || 'Hédam');
@@ -751,8 +751,8 @@ window.populateFormSousBloc = populateFormSousBloc;
       }
     }
 
-    // HÉDAM (Sortie → Hadem)
-if (type === 'Sortie' && sous_bloc === 'Hadem') {
+    // HÉDAM (Sortie → Hedam)
+if (type === 'Sortie' && sous_bloc === 'Hedam') {
   const code = document.getElementById('form_hedam_code')?.value || '';
   const found = HEDAM.find(h => h.code === code);
   const nom   = found?.nom || '';
@@ -834,6 +834,7 @@ if (type === 'Sortie' && sous_bloc === 'Hadem') {
     }
   });
 })();
+
 
 
 
