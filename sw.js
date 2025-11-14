@@ -1,5 +1,5 @@
 // --- Service Worker: v20 (change ce numéro si tu réédites) ---
-const SW_VERSION = 'v8';
+const SW_VERSION = 'v9';
 const CACHE = 'suivi-depot-' + SW_VERSION;
 
 // Optionnel: cache de quelques assets statiques
@@ -7,7 +7,7 @@ const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js?v=25', // <-- mets la même version que dans index.html
+  './app.js?v=26', // <-- mets la même version que dans index.html
 ];
 
 self.addEventListener('install', (event) => {
@@ -47,6 +47,7 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
 
 
 
