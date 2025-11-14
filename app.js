@@ -531,28 +531,48 @@ function onLocChange() {
   }
 }
 
-/* === HEDAM (sorties) === */
+// === HÉDAM : auto-remplissage du sous-bloc (code + nom) ===
 function buildHedamList() {
   const sel = document.getElementById('form_hedam_code');
   if (!sel) return;
-  // HEDAM attendu au format [{code:'...', nom:'...'}, ...]
-  sel.innerHTML = HEDAM.map(r =>
-    `<option value="${r.code}">${r.code}${r.nom ? ' — ' + r.nom : ''}</option>`
-  ).join('');
-  if (HEDAM.length) sel.value = HEDAM[0].code;
+  // Remplit la liste avec les codes de HEDAM
+  sel.innerHTML = HEDAM
+    .map(r => `<option value="${r.code}">${r.code}</option>`)
+    .join('');
+
+  if (HEDAM.length > 0) {
+    sel.value = HEDAM[0].code;
+    onHedamChange();
+  }
 }
 
+function onHedamChange() {
+  const sel = document.getElementById('form_hedam_code');
+  if (!sel) return;
+  const code = sel.value;
+  const found = HEDAM.find(r => r.code === code);
+  if (found) {
+    const nomInput = document.getElementById('hedam-nom');
+    if (nomInput) nomInput.value = found.nom || '';
+  }
+}
+
+// Affiche / cache le bloc Hédam dans l’onglet Saisie
 function toggleHedamExtra(force) {
-  const type  = document.getElementById('form_type')?.value;
-  const sous  = document.getElementById('form_sous_bloc')?.value;
+  const type = document.getElementById('form_type')?.value;
+  const sous = document.getElementById('form_sous_bloc')?.value;
   const extra = document.getElementById('hedam-extra');
   if (!extra) return;
 
-  // ⚠️ orthographe : ton select "Sous-bloc" affiche bien "Hedam"
-  const show = (force !== undefined) ? force : (type === 'Sortie' && sous === 'Hedam');
+  const show = force !== undefined ? force : (type === 'Sortie' && sous === 'Hedam');
   extra.style.display = show ? 'block' : 'none';
-  if (show) buildHedamList();
+
+  if (show) {
+    buildHedamList();
+    onHedamChange();
+  }
 }
+
 
 
 
@@ -569,10 +589,13 @@ document.addEventListener('DOMContentLoaded', () => {
     buildLocList();
   }
 
-  // ← AJOUT 3.c : quand on change le sous-bloc Hédam, on met à jour la suggestion
-  const selHed = document.getElementById('form_hedam_code');
-  if (selHed) {
-    selHed.addEventListener('change', updateDescHint);
+  document.addEventListener('DOMContentLoaded', () => {
+  const selHedam = document.getElementById('form_hedam_code');
+  if (selHedam) {
+    selHedam.addEventListener('change', onHedamChange);
+    // On ne remplit la liste que si le bloc est visible,
+    // mais ce n’est pas grave si on appelle ici.
+    buildHedamList();
   }
 });
 
@@ -659,13 +682,17 @@ function populateFormSousBloc() {
   if (!sel) return;
 
   const opts = FORM_SB_OPTIONS[type] || [];
-  sel.innerHTML = opts.map(v => `<option value="${v}">${v}</option>`).join('') + `<option value="__autre__">Autre…</option>`;
+  sel.innerHTML =
+    opts.map(v => `<option value="${v}">${v}</option>`).join('') +
+    `<option value="__autre__">Autre…</option>`;
   sel.value = opts[0] || '__autre__';
+
   toggleOther(false);
   toggleAppExtra();
   toggleLocExtra();
-  toggleHedamExtra(); 
+  toggleHedamExtra();
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
   // Initialisation des listes déroulantes et des sous-blocs
@@ -674,14 +701,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('form_type').addEventListener('change', populateFormSousBloc);
   }
 
-  if (document.getElementById('form_sous_bloc')) {
-    document.getElementById('form_sous_bloc').addEventListener('change', () => {
-      toggleOther();
-      toggleAppExtra();
-      toggleLocExtra();
-      updateDescHint(); // 💡 mise à jour auto de la suggestion
-    });
-  }
+ if (document.getElementById('form_sous_bloc')) {
+  document.getElementById('form_sous_bloc').addEventListener('change', () => {
+    toggleOther();
+    toggleAppExtra();
+    toggleLocExtra();
+    toggleHedamExtra();
+    updateDescHint();
+  });
+}
+
 
   // — Aperçu dynamique de la description —
   ['form_type','form_sous_bloc','form_date','form_app_num','form_loc_code']
@@ -834,6 +863,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
     }
   });
 })();
+
 
 
 
