@@ -483,6 +483,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderLocauxTable();
     renderHedamTable();
     attachParamHandlers();
+    buildHedamList();
   }
 });
 
@@ -589,13 +590,10 @@ document.addEventListener('DOMContentLoaded', () => {
     buildLocList();
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // HÉDAM : juste l’évènement change (la liste sera remplie plus loin)
   const selHedam = document.getElementById('form_hedam_code');
   if (selHedam) {
     selHedam.addEventListener('change', onHedamChange);
-    // On ne remplit la liste que si le bloc est visible,
-    // mais ce n’est pas grave si on appelle ici.
-    buildHedamList();
   }
 });
 
@@ -863,6 +861,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
     }
   });
 })();
+
 
 
 
