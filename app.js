@@ -4,17 +4,19 @@ function openTab(id, btn) {
   const el = document.getElementById(id);
   if (el) el.style.display = 'block';
 
-  // Si on ouvre Saisie : rafraîchir les sous-blocs + blocs APP/LOC/HEDAM
+  // Si on ouvre Saisie : rafraîchir les sous-blocs + blocs APP/LOC/HEDAM/Élec
   if (id === 'saisie') {
     if (typeof populateFormSousBloc === 'function') populateFormSousBloc();
-    if (typeof toggleAppExtra === 'function') toggleAppExtra();
-    if (typeof toggleLocExtra === 'function') toggleLocExtra();
-    if (typeof toggleHedamExtra === 'function') toggleHedamExtra(); // Ajout pour Hedam
+    if (typeof toggleAppExtra === 'function')   toggleAppExtra();
+    if (typeof toggleLocExtra === 'function')   toggleLocExtra();
+    if (typeof toggleHedamExtra === 'function') toggleHedamExtra();
+    if (typeof toggleElecExtra === 'function')  toggleElecExtra();
   }
 
   document.querySelectorAll('.tablink').forEach(b => b.classList.remove('active'));
   (btn || document.querySelector(`.tablink[data-tab="${id}"]`))?.classList.add('active');
 }
+
 
 document.addEventListener('DOMContentLoaded', () => {
   const defaultBtn = document.querySelector('.tablink[data-tab="synthese"]');
@@ -553,20 +555,33 @@ function onHedamChange() {
 }
 
 // Affiche / cache le bloc Hédam dans l’onglet Saisie
-function toggleHedamExtra(force) {
+function toggleElecExtra(force) {
   const type = document.getElementById('form_type')?.value;
   const sous = document.getElementById('form_sous_bloc')?.value;
-  const extra = document.getElementById('hedam-extra');
+  const extra = document.getElementById('elec-extra');
   if (!extra) return;
 
-  const show = force !== undefined ? force : (type === 'Sortie' && sous === 'Hedam');
+  // On affiche uniquement pour Sortie + "Électricité, Eau et Téléphone"
+  const show = force !== undefined
+    ? force
+    : (type === 'Sortie' && sous === 'Électricité, Eau et Téléphone');
+
   extra.style.display = show ? 'block' : 'none';
 
   if (show) {
-    buildHedamList();
-    onHedamChange();
+    // Date du jour si vide
+    const dateEl = document.getElementById('form_date');
+    if (dateEl && !dateEl.value) {
+      dateEl.value = new Date().toISOString().slice(0, 10);
+    }
+    // On vide description et montant
+    const descEl = document.getElementById('form_description');
+    if (descEl) descEl.value = '';
+    const mntEl = document.getElementById('form_montant');
+    if (mntEl) mntEl.value = '';
   }
 }
+
 
 
 
@@ -637,18 +652,17 @@ function computeSuggestedDescription() {
   const date = document.getElementById('form_date')?.value || new Date().toISOString().slice(0,10);
   const mois = (date || '').slice(0,7);
 
+  // Cas particuliers : on ne propose rien pour Électricité/Eau/Téléphone
+  if (type === 'Sortie' && sous === 'Électricité, Eau et Téléphone') {
+    return '';
+  }
+
+  // Cas traités : Entrée → APP / Locaux
   if (type === 'Entrée' && (sous === 'APP' || sous === 'Locaux')) {
     return `Loyer ${mois}`;
   }
 
-  // Sortie → Hédam : "Plomberie 2025-01" (ou code si pas de nom)
-  if (type === 'Sortie' && sous === 'Hedam') {
-    const code = document.getElementById('form_hedam_code')?.value || '';
-    const found = HEDAM.find(h => h.code === code);
-    const label = (found?.nom || code || 'Hédam');
-    return `${label} ${mois}`.trim();
-  }
-
+  // Fallback simple
   return sous ? `${sous} ${mois}`.trim() : mois;
 }
 
@@ -683,7 +697,9 @@ function populateFormSousBloc() {
   toggleAppExtra();
   toggleLocExtra();
   toggleHedamExtra();
+  toggleElecExtra();
 }
+
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -699,9 +715,11 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleAppExtra();
     toggleLocExtra();
     toggleHedamExtra();
-    updateDescHint();
+    toggleElecExtra();
+    updateDescHint(); // 💡 mise à jour auto de la suggestion
   });
 }
+
 
 
   // — Aperçu dynamique de la description —
@@ -745,6 +763,10 @@ window.populateFormSousBloc = populateFormSousBloc;
     // Champs spécifiques
     let local = '';
     let locataire = '';
+    let fournisseur = ''; // Catégorie : Sonalgaz / EPEOR / Téléphone
+    let periode = '';     // Trimestre : T1..T4
+    let personne = '';    // Sous-catégorie : Dépôt / Appartement / Hedam / Cité Peret
+
 
     // APP (Entrée → APP)
     if (type === 'Entrée' && sous_bloc === 'APP') {
@@ -786,7 +808,19 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
   }
 }
 
+    // ÉLECTRICITÉ / EAU / TÉLÉPHONE (Sortie → Électricité, Eau et Téléphone)
+    if (type === 'Sortie' && sous_bloc === 'Électricité, Eau et Téléphone') {
+      fournisseur = document.getElementById('form_elec_categorie')?.value || '';
+      personne    = document.getElementById('form_elec_souscat')?.value || '';
+      periode     = document.getElementById('form_elec_trimestre')?.value || '';
 
+      if (!date) {
+        date = new Date().toISOString().slice(0, 10);
+      }
+      // Ici on laisse la description vide (ou saisie manuellement), pas d'auto-texte.
+    }
+
+    
     // 2) Validations → toasts
     if (!type || !date || !montantStr) {
       showToast('Merci de renseigner au moins : Type, Date et Montant.', 'error');
@@ -810,7 +844,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
       description || (type === 'Entrée' && (sous_bloc === 'APP' || sous_bloc === 'Locaux') ? `Loyer ${date.slice(0, 7)}` : '');
 
     // 3) Appel API (JSONP)
-    const params = new URLSearchParams({
+       const params = new URLSearchParams({
       action: 'add',
       type,
       sous_bloc,
@@ -818,8 +852,12 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
       montant: String(montant),
       description: finalDescription,
       local,
-      locataire
+      locataire,
+      fournisseur,
+      periode,
+      personne
     });
+
 
     const submitBtn = form.querySelector('button[type="submit"]');
 
@@ -855,6 +893,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
     }
   });
 })();
+
 
 
 
