@@ -112,6 +112,49 @@
 </div>
 
 
+<!-- Bloc spécifique pour Électricité / Eau / Téléphone -->
+<div id="elec-extra" class="extra-panel" style="display:none; margin-top:1rem; gap:0.5rem; align-items:flex-end;">
+  <p style="font-size:0.9rem; color:#555; margin:0 0 .5rem 0;">
+    Détail pour <strong>Électricité, Eau et Téléphone</strong>
+  </p>
+
+  <div style="display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end;">
+    <div>
+      <label for="form_elec_categorie">Catégorie</label><br>
+      <select id="form_elec_categorie" name="elec_categorie" style="max-width:220px;">
+        <option value="">(Choisir…)</option>
+        <option value="Sonalgaz">Sonalgaz</option>
+        <option value="EPEOR">EPEOR</option>
+        <option value="Téléphone">Téléphone</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="form_elec_souscat">Sous-catégorie</label><br>
+      <select id="form_elec_souscat" name="elec_souscat" style="max-width:220px;">
+        <option value="">(Choisir…)</option>
+        <option value="Dépôt">Dépôt</option>
+        <option value="Appartement">Appartement</option>
+        <option value="Hedam">Hedam</option>
+        <option value="Cité Peret">Cité Peret</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="form_elec_trimestre">Trimestre</label><br>
+      <select id="form_elec_trimestre" name="elec_trimestre" style="max-width:120px;">
+        <option value="">(Choisir…)</option>
+        <option value="T1">T1</option>
+        <option value="T2">T2</option>
+        <option value="T3">T3</option>
+        <option value="T4">T4</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+    
+    
 <!-- puis ton <label>Date> existant -->
 
 
@@ -243,6 +286,7 @@
 
 </body>
 </html>
+
 
 
 
