@@ -536,14 +536,15 @@ function onLocChange() {
 function buildHedamList() {
   const sel = document.getElementById('form_hedam_code');
   if (!sel) return;
-  // Remplit la liste avec les codes de HEDAM
+
+  // 🔹 Affiche le NOM dans la liste, garde le CODE en interne
   sel.innerHTML = HEDAM
-    .map(r => `<option value="${r.code}">${r.code}</option>`)
+    .map(r => `<option value="${r.code}">${r.nom}</option>`)
     .join('');
 
   if (HEDAM.length > 0) {
     sel.value = HEDAM[0].code;
-    onHedamChange();
+    onHedamChange(); // même si onHedamChange ne fait plus rien, ce n'est pas grave
   }
 }
 
@@ -861,6 +862,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
     }
   });
 })();
+
 
 
 
