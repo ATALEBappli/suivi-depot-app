@@ -549,14 +549,7 @@ function buildHedamList() {
 }
 
 function onHedamChange() {
-  const sel = document.getElementById('form_hedam_code');
-  if (!sel) return;
-  const code = sel.value;
-  const found = HEDAM.find(r => r.code === code);
-  if (found) {
-    const nomInput = document.getElementById('hedam-nom');
-    if (nomInput) nomInput.value = found.nom || '';
-  }
+  // Tu peux laisser vide ou supprimer complètement la fonction
 }
 
 // Affiche / cache le bloc Hédam dans l’onglet Saisie
@@ -862,6 +855,7 @@ if (type === 'Sortie' && sous_bloc === 'Hedam') {
     }
   });
 })();
+
 
 
 
