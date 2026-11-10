@@ -1,0 +1,18 @@
+name: Synchroniseur REC — tests hors réseau
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+jobs:
+  mocks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node tests/rec-synchronisation.mjs
