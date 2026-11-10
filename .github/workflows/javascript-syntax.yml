@@ -1,0 +1,22 @@
+name: Syntaxe JavaScript
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Vérifier la syntaxe sans exécuter l’application
+        run: node scripts/check-js.mjs
