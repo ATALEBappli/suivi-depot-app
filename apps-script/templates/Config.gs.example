@@ -1,0 +1,12 @@
+/**
+ * Proposition de configuration uniquement : non synchronisée, non exécutée.
+ * À adapter après examen du vrai backend et de ses noms de fonctions.
+ */
+function getConfiguredSpreadsheetId_() {
+  const value = PropertiesService.getScriptProperties()
+    .getProperty('SPREADSHEET_ID');
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('Propriété de script SPREADSHEET_ID manquante.');
+  }
+  return value.trim();
+}
