@@ -1,0 +1,12 @@
+{
+  "transactions": [
+    ["type","date","montant","sous_bloc","description","local","locataire","fournisseur","periode","moyen","personne"],
+    ["Entrée","2026-01-15",450,"APP","REC fictif loyer","REC01","Locataire fictif A","","2026-01","",""],
+    ["Entrée","2026-01-16",200,"Locaux","REC fictif local","REC-L1","Locataire fictif B","","2026-01","",""],
+    ["Sortie","2026-01-20",75,"Hédam","REC fictif travaux","HEDAM REC-H1 Artisan fictif","","","","",""],
+    ["Sortie","2026-01-22",35,"Électricité, Eau et Téléphone","REC fictif facture","","","Électricité","T1","","Fournisseur fictif"]
+  ],
+  "config_logements": [["num","type","locataire","loyer"],["REC01","F2","Locataire fictif A",450]],
+  "config_locaux": [["code","nom","locataire","loyer"],["REC-L1","Local fictif","Locataire fictif B",200]],
+  "config_hedam": [["code","nom"],["REC-H1","Artisan fictif"]]
+}

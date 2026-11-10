@@ -11,3 +11,6 @@ client_secret*.json
 *service-account*.json
 # Exports privés, sauvegardes et fichiers de travail.
 work/
+
+# Frontend généré : configuration injectée hors Git.
+dist/
