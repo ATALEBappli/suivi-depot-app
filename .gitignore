@@ -1,0 +1,13 @@
+# Liaisons Google et authentification locales : jamais versionnées.
+.clasp.json
+.clasp.*.json
+.clasprc.json
+.clasprc.*.json
+.env
+.env.*
+!.env.example
+credentials.json
+client_secret*.json
+*service-account*.json
+# Exports privés, sauvegardes et fichiers de travail.
+work/
