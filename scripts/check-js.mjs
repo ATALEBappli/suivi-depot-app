@@ -25,7 +25,7 @@ function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory() && !ignored.has(entry.name)) walk(path);
-    if (entry.isFile() && /\.(?:js|mjs|cjs)$/.test(entry.name)) {
+    if (entry.isFile() && /\.(?:js|mjs|cjs|gs)$/.test(entry.name)) {
       check(readFileSync(path, 'utf8'), relative(root, path), entry.name.endsWith('.mjs'));
     }
   }
