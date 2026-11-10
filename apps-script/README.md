@@ -1,13 +1,16 @@
-# Google Apps Script — préparation de l'intégration
+# Google Apps Script — intégration du backend historique
 
-La Mission 2 prépare le versionnement du backend existant, sans le reconstruire.
-Le vrai `Code.gs` et son manifeste ne sont pas disponibles. Aucun accès Google,
-changement de projet, écriture Sheets ou déploiement n'est effectué ici.
+La Mission 3 ajoute dans `src/` le vrai `Code.gs` et le manifeste fournis par
+le propriétaire. Voir [les contrats, écarts et risques](src/README.md) et
+[le compte rendu de validation](../docs/mission-3-validation.md).
+Aucun accès Google, changement de projet, écriture Sheets ou déploiement n'est
+effectué. Les procédures ci-dessous proviennent de la préparation Mission 2 ;
+elles ne donnent aucune autorisation d'envoi ou de déploiement.
 
 ## Structure et configuration prévues
 
-- `src/` : recevra les sources réelles nettoyées, dont `Code.gs`, et le manifeste
-  réel `appsscript.json`, après revue dans une prochaine PR.
+- `src/` : contient les sources réelles nettoyées `Code.gs` et `appsscript.json`,
+  soumises à revue dans la PR Mission 3.
 - `templates/Config.gs.example` : exemple autonome de lecture de la propriété
   `SPREADSHEET_ID` par `PropertiesService.getScriptProperties()`. Il refuse une
   valeur absente ou vide, sans valeur par défaut, journalisation d'identifiant,
