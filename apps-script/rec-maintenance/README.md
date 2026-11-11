@@ -32,8 +32,8 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
 2. Vérifier les fichiers existants : exactement un script `Synchroniseur` ou le nom historique `Code`
    (affichés avec `.gs`) et `appsscript` (JSON). La version initiale doit être
    exactement celle de Mission 7 ou Mission 9, avec uniquement les deux valeurs
-   privées remplacées. Les ajouts de diagnostics et toute autre édition ou formatage initial sont
-   bloquants : arrêter et faire revoir la différence, sans désactiver le contrôle.
+   privées remplacées. Seuls les espaces ASCII, tabulations et retours CR/LF terminaux peuvent
+   différer ; toute autre édition, notamment les diagnostics, reste bloquante : arrêter et faire revoir la différence, sans désactiver le contrôle.
 3. Créer un nouveau projet Apps Script autonome nommé **REC-Maintenance**, privé,
    sans autre éditeur. Copier **une seule fois** le fichier `Maintenance.gs` revu
    depuis GitHub Raw/Copy ; renommer le fichier initial `Maintenance` et y coller
@@ -93,6 +93,9 @@ La reconnaissance porte sur **tout le texte**, après remplacement du seul bloc
 REC_DESTINATION strictement parsé par le bloc public à marqueurs. L'empreinte
 SHA-256 doit appartenir aux deux références Mission 7/9 déjà approuvées ; aucune
 nouvelle empreinte privée ni liste de noms de fonctions n'est acceptée.
+Pour la reconnaissance initiale uniquement, les caractères terminaux SP ASCII,
+TAB, CR et LF sont ramenés à un unique LF avant comparaison aux mêmes empreintes.
+Aucun espace intérieur, commentaire ou caractère Unicode n'est neutralisé.
 Le manifeste, l'enveloppe, le compte effectif, les identités distinctes et les
 métadonnées du projet restent contrôlés. L'installation avec diagnostics manuels
 n'est donc pas déclarée compatible sans revue de leur contenu réel.
@@ -100,7 +103,7 @@ n'est donc pas déclarée compatible sans revue de leur contenu réel.
 Après autorisation distincte d'installation, `diagnostiquerInstallation` ne lit
 que les métadonnées et les sources de la cible. Aucun accès GitHub, Drive, backend,
 aucune écriture de propriété, aucun plan ou approbation créé/effacé. Il retourne
-uniquement un état et deux booléens ; aucun identifiant, empreinte privée, nom de
+uniquement un état et trois booléens ; aucun identifiant, empreinte privée, nom de
 fonction, source ou erreur brute. `REVUE_PRIVEE_REQUISE` signifie que la structure,
 le manifeste, la liaison et l'enveloppe passent, mais que le texte complet est
 inconnu (diagnostics inclus). `REFUSE` signifie qu'un contrôle préalable échoue ;
@@ -143,6 +146,48 @@ Aucun diagnostic de l'installation réelle n'a été exécuté : la compatibilit
 Mission 7 → Mission 9 est vérifiée sur mocks pour `Code.gs` exact et les refus des
 ajouts manuels. La réussite passée d'une synchronisation ne prouve pas l'identité
 du texte installé aujourd'hui.
+
+## Correctif minimal de fin de fichier — projet déjà installé
+
+La fixture Mission 7 et la référence Mission 9 se terminent par un unique LF.
+Un LF absent, supplémentaire, un CRLF final ou des blancs ASCII terminaux
+suffisaient à produire une empreinte inconnue. C'est une cause possible et
+reproduite sur mocks, pas une observation des sources Google réelles.
+
+Le correctif conserve d'abord le résultat de la comparaison exacte. Pour la
+reconnaissance initiale seulement, il retire exclusivement la suite finale des
+caractères espace ASCII (U+0020), tabulation (U+0009), CR (U+000D) et LF (U+000A),
+puis ajoute un LF. Le SHA-256 doit encore appartenir aux **mêmes deux empreintes**.
+Les références exactes terminent par une accolade puis LF : tout le texte avant
+cette zone reste donc identique. Ni trim, ni normalisation Unicode, ni suppression
+de commentaires ou d'espaces intérieurs, ni analyseur syntaxique ne sont employés.
+
+`diagnostiquerInstallation` ajoute `normalisationTerminaleNecessaire` :
+
+- `true` : texte exact inconnu, mais référence reconnue après ce seul ajustement final.
+- `false` : texte déjà exact, ou source toujours inconnue (voir les autres champs).
+
+Cette inspection ne modifie aucune source Google, propriété, plan ou approbation.
+`initialiserMaintenance` utilise la même reconnaissance après tous les contrôles
+existants. Les sauvegardes, plans et restaurations continuent à utiliser le texte
+réel exact : aucun fichier n'est réécrit ou normalisé par ce correctif. La
+synchronisation conserve ses contrôles avant/après et sa sauvegarde obligatoire.
+Les commentaires supplémentaires, modifications fonctionnelles, blancs intérieurs,
+BOM et espaces Unicode restent inconnus ou refusés. Une source non reconnue reste
+bloquée, sans procédure d'acceptation automatique.
+
+Après revue et accord, dans le **REC-Maintenance existant** :
+
+1. Remplacer seulement `Maintenance.gs` par le fichier public du commit approuvé,
+   en conservant votre ligne `MAINT_DESTINATION` personnalisée.
+2. Enregistrer puis lancer `diagnostiquerInstallation`. Si la source est reconnue,
+   lancer `initialiserMaintenance` pour obtenir `LIAISON_EXISTANTE_VERROUILLEE`.
+
+Une seule mise à jour de fichier est nécessaire. Aucun Acorn, autre fichier,
+projet, réglage Cloud, manifeste, propriété ou PAT à ajouter/modifier. Ne rien
+recoller dans REC-Synchronisation. Ne pas lancer de synchronisation réelle à ce
+stade ; la future Mission 9 conserve son cycle d'approbation distinct.
+Aucune opération Google n'a été effectuée pour préparer ce correctif.
 
 ## Chaque mise à jour future : un SHA, trois exécutions
 

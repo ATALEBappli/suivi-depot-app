@@ -51,7 +51,7 @@ peut servir de plan RESTORE, et inversement. L'index des sauvegardes reste limit
 
 Node 24, sans installation npm ni client réseau dans les contextes fonctionnels :
 
-- node tests/rec-maintenance.mjs : 106 scénarios réussis.
+- node tests/rec-maintenance.mjs : 135 scénarios réussis.
 - node tests/rec-synchronisation.mjs : 46 scénarios réussis.
 - node scripts/check-apps-script.mjs : 84 scénarios backend réussis.
 - node tests/isolation.mjs : réussi, hors réseau.
@@ -140,3 +140,48 @@ n'est pas certifiée. Aucun accès Google n'a été fait. La migration est démo
 sur les références publiques et les mocks ; l'installation inconnue reste bloquée
 jusqu'à la revue privée décrite dans le guide, sans affaiblir les approbations,
 sauvegardes et restaurations.
+
+## PR #10 révisée — correctif minimal terminal
+
+La PR #9 est fusionnée. La PR #10 existante est réduite à ce correctif :
+diagnostiquerDifferences, Acorn.gs et sa licence sont retirés. Aucune dépendance,
+nouveau fichier ou permission. Seuls Maintenance.gs, son README, les tests et ce
+compte rendu diffèrent de main. Aucun changement du synchroniseur ou du backend.
+
+L'empreinte brute de chaque référence publique a été recalculée via le véritable
+maintBinding_, avec deux valeurs privées fictives, et correspond aux empreintes
+approuvées inchangées. Les deux références finissent par une accolade puis LF.
+La reconnaissance initiale accepte en plus le même texte après remplacement de
+la seule zone terminale SP ASCII/TAB/CR/LF par un unique LF. Aucune modification
+du texte intérieur, aucune normalisation Unicode ou syntaxique. Les contrôles de
+fichiers, manifeste, enveloppe, identité et destination sont exécutés avant cette
+comparaison, comme auparavant. Les deux empreintes autorisées sont inchangées.
+
+Le diagnostic ajoute normalisationTerminaleNecessaire : vrai seulement si le
+texte exact est inconnu et la variante terminale est reconnue. Inconnu après
+normalisation reste inconnu. Le diagnostic n'écrit aucune propriété Google ni
+source distante ; initialiserMaintenance ne change que son ENROLLMENT comme avant.
+Les sources sauvegardées, plans, empreintes opérationnelles et restaurations
+restent exacts ; la normalisation ne se propage à aucun chemin de synchronisation.
+
+29 tests supplémentaires (135 au total) couvrent Mission 7/9, Code.gs exact,
+absence de LF, LF supplémentaires, CRLF/CR finaux, espaces/tabulations et zone
+mixte. Chaque cas reconnu vérifie le diagnostic sans mutation, l'enrôlement,
+la préservation des valeurs privées puis, si nécessaire, synchronisation et
+restauration exactes de la variante sauvegardée. Cas négatifs : commentaire final,
+commentaire suivi de blancs, fonction supplémentaire, condition modifiée, espaces,
+lignes vides/commentaires intérieurs, NBSP, espace Unicode, séparateur Unicode,
+BOM final/initial, zéro largeur et CRLF intérieurs. Les tests vérifient aussi les
+empreintes réelles des références et l'absence du diagnostic complexe.
+
+Validation réellement réexécutée : 135 scénarios Maintenance, 46 synchroniseur,
+84 backend ; isolation, préparation REC, syntaxe des 16 sources et contrôles de
+diff. Aucun npm, aucune opération Google réelle, aucun déploiement ni fusion.
+Le diagnostic de l'installation réelle reste à faire par le propriétaire :
+une fin de fichier différente est une hypothèse reproduite, pas une certitude.
+
+Procédure : une seule mise à jour de Maintenance.gs dans le projet existant,
+en conservant MAINT_DESTINATION. Aucun Acorn, nouveau projet ou réglage Cloud,
+aucun changement de REC-Synchronisation, propriétés, manifeste, données ou
+permissions. Après enregistrement : diagnostiquerInstallation puis, si reconnu,
+initialiserMaintenance. Attendre l'accord du propriétaire avant fusion.

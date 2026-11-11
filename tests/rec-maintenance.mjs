@@ -446,7 +446,7 @@ test('Diagnostic inconnu : résumé précis et propriétés existantes inchangé
   const x = setup(); x.approve(); x.state.files[0].source += '\nfunction diagnosticDrive() {}';
   const before = copy([...x.properties]); x.calls.length = 0;
   assert.deepEqual(x.call('diagnostiquerInstallation'), { etat: 'REVUE_PRIVEE_REQUISE',
-    nomHistoriqueCode: false, sourceCompleteConnue: false });
+    nomHistoriqueCode: false, sourceCompleteConnue: false, normalisationTerminaleNecessaire: false });
   assert.deepEqual([...x.properties], before); assert.equal(x.calls.length, 2);
   assert(x.calls.every(c => c.method === 'get')); assert.equal(x.drive.size, 0);
 });
@@ -455,5 +455,71 @@ test('Ancien enrôlement sans codeName : compatibilité limitée à Synchroniseu
   x.properties.set('ENROLLMENT', JSON.stringify(e)); x.approve();
   assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
   x.state.files[0].name = 'Code'; assert.equal(x.call('verifierConfiguration').etat, 'REFUSE');
+});
+// Variantes terminales : seules SP ASCII, TAB, CR et LF, après le code exact.
+for (const [versionName, version] of [['Mission 7', historical], ['Mission 9', syncSource]]) {
+  for (const [variant, suffix, required] of [
+    ['exact', '\n', false], ['sans LF', '', true], ['LF supplémentaires', '\n\n\n', true],
+    ['CRLF final', '\r\n', true], ['CR final', '\r', true], ['espaces et tabulations', ' \t ', true],
+    ['zone mixte', '\r\n \t\n\r \n', true]
+  ]) test('Reconnaissance terminale ' + versionName + ' : ' + variant, () => {
+    const x = setup(true, false);
+    x.state.files = makeFiles(personalize(version).replace(/[ \t\r\n]*$/, '') + suffix);
+    x.state.files[0].name = 'Code';
+    const original = copy(x.state.files), properties = copy([...x.properties]);
+    const result = x.call('diagnostiquerInstallation');
+    assert.deepEqual(result, { etat: 'SOURCE_INITIALE_RECONNUE', nomHistoriqueCode: true,
+      sourceCompleteConnue: true, normalisationTerminaleNecessaire: required });
+    assert.deepEqual([...x.properties], properties); assert.deepEqual(x.state.files, original);
+    assert.equal(x.drive.size, 0); assert(x.calls.every(c => c.method === 'get'));
+    assert.equal(x.call('initialiserMaintenance').etat, 'LIAISON_EXISTANTE_VERROUILLEE');
+    assert.deepEqual(x.state.files, original); assert.deepEqual(JSON.parse(x.properties.get('ENROLLMENT')).binding,
+      {scriptId: backendId, accountEmail: email});
+    x.approve(); assert.equal(x.call('synchroniserCommitApprouve').etat,
+      version === syncSource && !required ? 'AUCUN_CHANGEMENT' : 'SYNCHRONISATION_VERIFIEE');
+    if (version !== syncSource || required) {
+      assert.deepEqual([...x.drive.values()][0].files, original);
+      x.properties.set('RESTORE_BACKUP_KEY', '1'); x.call('simulerRestauration'); x.call('approuverSimulation');
+      assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'RESTAURATION_VERIFIEE');
+      assert.deepEqual(x.state.files, original);
+    }
+    const output = JSON.stringify([result, x.logs]);
+    for (const value of [id, backendId, email, maintenanceId, 'GOOGLE_FICTIF', 'SECRET_FICTIF_NE_PAS_JOURNALISER']) assert(!output.includes(value));
+  });
+}
+for (const [label, change] of [
+  ['commentaire final', s => s + '// ajout fictif\n'],
+  ['commentaire final puis blancs', s => s + '/* ajout */ \t\n'],
+  ['fonction ajoutée', s => s + 'function diagnosticFictif() {}\n'],
+  ['condition modifiée', s => s.replace('if (plan.before === plan.after)', 'if (plan.before !== plan.after)')],
+  ['espacement intérieur', s => s.replace('const plan = recPlan_();', 'const plan  = recPlan_();')],
+  ['ligne vide intérieure', s => s.replace('function recProps_', '\nfunction recProps_')],
+  ['commentaire intérieur', s => s.replace('function recProps_', '// ajout\nfunction recProps_')],
+  ['NBSP final', s => s + '\u00a0'], ['espace Unicode final', s => s + '\u2003'],
+  ['séparateur Unicode final', s => s + '\u2028'], ['BOM final', s => s + '\ufeff'],
+  ['zéro largeur final', s => s + '\u200b'],
+  ['CRLF partout', s => s.replace(/\n/g, '\r\n')], ['BOM initial', s => '\ufeff' + s]
+]) test('Normalisation terminale refuse : ' + label, () => {
+  const x = setup(true, false), original = personalize(historical), changed = change(original);
+  assert.notEqual(changed, original); x.state.files[0].name = 'Code'; x.state.files[0].source = changed;
+  const result = x.call('diagnostiquerInstallation');
+  assert(['REFUSE', 'REVUE_PRIVEE_REQUISE'].includes(result.etat));
+  if (result.etat !== 'REFUSE') {
+    assert.equal(result.sourceCompleteConnue, false); assert.equal(result.normalisationTerminaleNecessaire, false);
+  }
+  refused(x, 'initialiserMaintenance'); assert(!x.properties.has('ENROLLMENT'));
+  assert.equal(x.drive.size, 0); assert(x.calls.every(c => c.method === 'get'));
+});
+test('Empreintes approuvées vérifiées sur fixtures et absence de diagnostic complexe', () => {
+  const x = setup();
+  assert.deepEqual(copy(vm.runInContext('MAINT_KNOWN_SOURCES', x.context)), [
+    '2ae711f40846d00eb88d969381b0bc5253f3ad92320f5d02001c3b9d96c21b8d',
+    '93765033560978a8b6f8b63736fc3e19fdca9a4a948aeb1f16e5373812cdebea']);
+  for (const [i, text] of [historical, syncSource].entries()) {
+    const hash = createHash('sha256').update(x.context.maintBinding_(personalize(text)).normalized, 'utf8').digest('hex');
+    assert.equal(hash, vm.runInContext('MAINT_KNOWN_SOURCES', x.context)[i]);
+  }
+  assert.equal(typeof x.context.diagnostiquerDifferences, 'undefined');
+  assert(!source.includes('MAINT_ACORN'));
 });
 console.log(`${count} scénarios REC-Maintenance hors réseau réussis.`);

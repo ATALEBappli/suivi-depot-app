@@ -251,15 +251,22 @@ function maintInitial_() {
     parsed.binding.scriptId !== MAINT_DESTINATION.scriptId && parsed.binding.scriptId !== ScriptApp.getScriptId() &&
     parsed.binding.accountEmail === Session.getEffectiveUser().getEmail(), 'IDENTITE_INITIALE_INCORRECTE');
   const digest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, parsed.normalized, Utilities.Charset.UTF_8));
-  return { codeName: code[0].name, binding: parsed.binding,
-    known: MAINT_KNOWN_SOURCES.indexOf(digest) !== -1 };
+  const exact = MAINT_KNOWN_SOURCES.indexOf(digest) !== -1;
+  // Reconnaissance initiale seulement : conserver chaque caractère intérieur.
+  // Ne pas utiliser trim/\s : seuls SP ASCII, TAB, CR et LF terminaux sont admis.
+  const terminal = parsed.normalized.replace(/[ \t\r\n]*$/, '') + '\n';
+  const terminalDigest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, terminal, Utilities.Charset.UTF_8));
+  const terminalKnown = MAINT_KNOWN_SOURCES.indexOf(terminalDigest) !== -1;
+  return { codeName: code[0].name, binding: parsed.binding, known: exact || terminalKnown,
+    terminalNormalizationRequired: !exact && terminalKnown };
 }
 // Aucun enrôlement, plan, approbation, sauvegarde ou écriture distante.
 // Un ajout de diagnostics reste inconnu tant que son contenu exact n'a pas été revu.
 function diagnostiquerInstallation() { return maintAction_('DIAGNOSTIC_INITIAL', function () {
   const inspected = maintInitial_();
   return { etat: inspected.known ? 'SOURCE_INITIALE_RECONNUE' : 'REVUE_PRIVEE_REQUISE',
-    nomHistoriqueCode: inspected.codeName === 'Code', sourceCompleteConnue: inspected.known };
+    nomHistoriqueCode: inspected.codeName === 'Code', sourceCompleteConnue: inspected.known,
+    normalisationTerminaleNecessaire: inspected.terminalNormalizationRequired };
 }); }
 // Approbation initiale de la liaison existante, aucune écriture distante.
 function initialiserMaintenance() { return maintAction_('INITIALISATION', function () {
