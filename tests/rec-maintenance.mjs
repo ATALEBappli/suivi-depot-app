@@ -145,7 +145,7 @@ test('Initialisation explicite Mission 7, uniquement GET, paramètres privés d�
   const x = setup(true, false); refused(x); assert.equal(x.calls.length, 0);
   assert.equal(x.call('initialiserMaintenance').etat, 'LIAISON_EXISTANTE_VERROUILLEE');
   assert.deepEqual(JSON.parse(x.properties.get('ENROLLMENT')), { target: id, maintenance: maintenanceId,
-    binding: { scriptId: backendId, accountEmail: email } });
+    binding: { scriptId: backendId, accountEmail: email }, codeName: 'Synchroniseur' });
   assert(x.calls.every(c => c.method === 'get')); assert.equal(x.drive.size, 0);
   const before = x.properties.get('ENROLLMENT'); refused(x, 'initialiserMaintenance');
   assert.equal(x.properties.get('ENROLLMENT'), before);
@@ -392,5 +392,68 @@ test('Approvals SYNC et RESTORE non interchangeables', () => {
 });
 test('Sans PAT : aucune requête après initialisation', () => {
   const x = setup(); x.properties.delete('GITHUB_READ_TOKEN'); refused(x); assert.equal(x.calls.length, 0);
+});
+for (const version of [historical, syncSource]) test('Code.gs historique : cycle complet, sauvegarde et restauration exactes', () => {
+  const x = setup(true, false), original = makeFiles(personalize(version)); original[0].name = 'Code';
+  if (version === syncSource) x.state.candidate[0].source += '\n// Candidat public approuvé fictif';
+  x.state.files = copy(original);
+  assert.equal(x.call('diagnostiquerInstallation').etat, 'SOURCE_INITIALE_RECONNUE');
+  assert(!x.properties.has('ENROLLMENT'));
+  assert.equal(x.call('initialiserMaintenance').etat, 'LIAISON_EXISTANTE_VERROUILLEE');
+  assert.equal(JSON.parse(x.properties.get('ENROLLMENT')).codeName, 'Code');
+  x.approve(); assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
+  const expected = makeFiles(personalize(x.state.candidate[0].source)); expected[0].name = 'Code';
+  assert.deepEqual(x.state.files, expected);
+  assert.deepEqual([...x.drive.values()][0].files, original);
+  x.properties.set('RESTORE_BACKUP_KEY', '1');
+  assert.equal(x.call('simulerRestauration').etat, 'RESTAURATION_SIMULEE');
+  x.call('approuverSimulation');
+  assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'RESTAURATION_VERIFIEE');
+  assert.deepEqual(x.state.files, original);
+});
+for (const extra of ['\nfunction diagnosticDrive() { return "DIAGNOSTIC_PRIVE_FICTIF"; }',
+  '\nfunction recGoogle_() {}', '\nthrow new Error("NE_PAS_EXECUTER");']) {
+  test('Code.gs avec ajouts manuels : diagnostic seul, aucune acceptation permissive', () => {
+    const x = setup(true, false); x.state.files[0].name = 'Code'; x.state.files[0].source += extra;
+    const before = copy([...x.properties]);
+    const result = x.call('diagnostiquerInstallation');
+    assert(['REVUE_PRIVEE_REQUISE', 'REFUSE'].includes(result.etat));
+    assert.deepEqual([...x.properties], before);
+    refused(x, 'initialiserMaintenance'); assert(!x.properties.has('ENROLLMENT'));
+    assert(x.calls.every(c => c.method === 'get')); assert.equal(x.drive.size, 0);
+    const output = JSON.stringify([x.logs, result]);
+    for (const privateValue of [id, backendId, email, maintenanceId, 'DIAGNOSTIC_PRIVE_FICTIF', extra]) assert(!output.includes(privateValue));
+  });
+}
+for (const mutate of [
+  x => { x.state.files.push({ ...x.state.files[0], name: 'Code' }); },
+  x => { x.state.files[0].name = 'Autre'; },
+  x => { x.state.files[0].name = 'Code.gs'; },
+  x => { x.state.files[0].name = 'Code'; x.state.files[1].source = '{}'; },
+  x => { x.state.files[0].name = 'Code'; x.state.email = 'autre@example.invalid'; },
+  x => { x.state.files[0].name = 'Code'; x.state.bound = true; }
+]) test('Installation historique ambiguë ou identité/manifeste incorrect : refus fermé', () => {
+  const x = setup(true, false); mutate(x);
+  refused(x, 'diagnostiquerInstallation'); refused(x, 'initialiserMaintenance');
+  assert(!x.properties.has('ENROLLMENT')); assert.equal(x.drive.size, 0);
+});
+test('Nom enrôlé verrouillé après initialisation historique', () => {
+  const x = setup(true, false); x.state.files[0].name = 'Code'; x.call('initialiserMaintenance');
+  x.approve(); x.state.files[0].name = 'Synchroniseur'; refused(x, 'synchroniserCommitApprouve');
+  assert.equal(x.drive.size, 0);
+});
+test('Diagnostic inconnu : résumé précis et propriétés existantes inchangées', () => {
+  const x = setup(); x.approve(); x.state.files[0].source += '\nfunction diagnosticDrive() {}';
+  const before = copy([...x.properties]); x.calls.length = 0;
+  assert.deepEqual(x.call('diagnostiquerInstallation'), { etat: 'REVUE_PRIVEE_REQUISE',
+    nomHistoriqueCode: false, sourceCompleteConnue: false });
+  assert.deepEqual([...x.properties], before); assert.equal(x.calls.length, 2);
+  assert(x.calls.every(c => c.method === 'get')); assert.equal(x.drive.size, 0);
+});
+test('Ancien enrôlement sans codeName : compatibilité limitée à Synchroniseur', () => {
+  const x = setup(), e = JSON.parse(x.properties.get('ENROLLMENT')); delete e.codeName;
+  x.properties.set('ENROLLMENT', JSON.stringify(e)); x.approve();
+  assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
+  x.state.files[0].name = 'Code'; assert.equal(x.call('verifierConfiguration').etat, 'REFUSE');
 });
 console.log(`${count} scénarios REC-Maintenance hors réseau réussis.`);

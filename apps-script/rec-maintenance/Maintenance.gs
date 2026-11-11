@@ -204,11 +204,13 @@ function maintEnvelope_(source) {
     maintRequire_((source.match(declaration) || []).length === 1, 'ENVELOPPE_AMBIGUE');
   });
 }
-function maintFiles_(files, unbound) {
+function maintFiles_(files, unbound, initialName) {
+  const codeName = unbound ? (initialName || 'Synchroniseur') : (maintEnrollment_().codeName || 'Synchroniseur');
+  maintRequire_(['Synchroniseur', 'Code'].indexOf(codeName) !== -1, 'NOM_SOURCE_INVALIDE');
   maintRequire_(Array.isArray(files) && files.length === 2, 'FICHIERS_INVALIDES');
   const seen = {};
   const result = files.map(function (f) {
-    maintRequire_(f && ((f.name === 'Synchroniseur' && f.type === 'SERVER_JS') ||
+    maintRequire_(f && ((f.name === codeName && f.type === 'SERVER_JS') ||
       (f.name === 'appsscript' && f.type === 'JSON')) && !seen[f.name] &&
       typeof f.source === 'string' && f.source.length > 0 && f.source.length <= 500000, 'FICHIER_INVALIDE');
     seen[f.name] = true;
@@ -221,7 +223,7 @@ function maintFiles_(files, unbound) {
     }
     return { name: f.name, type: f.type, source: f.source };
   });
-  maintRequire_(seen.Synchroniseur && seen.appsscript && JSON.stringify(result).length <= 1000000, 'FICHIERS_INVALIDES');
+  maintRequire_(seen[codeName] && seen.appsscript && JSON.stringify(result).length <= 1000000, 'FICHIERS_INVALIDES');
   return result.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
 }
 function maintMaterialize_(files) {
@@ -232,23 +234,41 @@ function maintMaterialize_(files) {
   const block = MAINT_TEMPLATE.replace("scriptId: 'A_PERSONNALISER_HORS_GIT'", "scriptId: '" + binding.scriptId + "'")
     .replace("accountEmail: 'A_PERSONNALISER_HORS_GIT'", "accountEmail: '" + binding.accountEmail + "'");
   code.source = MAINT_HEADER + block + code.source.slice(MAINT_HEADER.length + MAINT_TEMPLATE.length);
+  code.name = maintEnrollment_().codeName || 'Synchroniseur';
   return maintFiles_(checked);
 }
+// Inspection commune : uniquement les deux noms historiques explicites, jamais un alias libre.
+function maintInitial_() {
+  maintLocalTarget_(); maintMetadata_();
+  const response = maintGoogle_('get', '/v1/projects/' + MAINT_DESTINATION.scriptId + '/content');
+  maintRequire_(response.scriptId === MAINT_DESTINATION.scriptId, 'CIBLE_INCORRECTE');
+  maintRequire_(Array.isArray(response.files), 'FICHIERS_INVALIDES');
+  const code = response.files.filter(function (f) { return f && f.type === 'SERVER_JS'; });
+  maintRequire_(code.length === 1 && ['Code', 'Synchroniseur'].indexOf(code[0].name) !== -1, 'NOM_SOURCE_INVALIDE');
+  const files = maintFiles_(response.files, true, code[0].name);
+  const parsed = maintBinding_(files.filter(function (f) { return f.type === 'SERVER_JS'; })[0].source);
+  maintRequire_(parsed.block !== MAINT_TEMPLATE &&
+    parsed.binding.scriptId !== MAINT_DESTINATION.scriptId && parsed.binding.scriptId !== ScriptApp.getScriptId() &&
+    parsed.binding.accountEmail === Session.getEffectiveUser().getEmail(), 'IDENTITE_INITIALE_INCORRECTE');
+  const digest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, parsed.normalized, Utilities.Charset.UTF_8));
+  return { codeName: code[0].name, binding: parsed.binding,
+    known: MAINT_KNOWN_SOURCES.indexOf(digest) !== -1 };
+}
+// Aucun enrôlement, plan, approbation, sauvegarde ou écriture distante.
+// Un ajout de diagnostics reste inconnu tant que son contenu exact n'a pas été revu.
+function diagnostiquerInstallation() { return maintAction_('DIAGNOSTIC_INITIAL', function () {
+  const inspected = maintInitial_();
+  return { etat: inspected.known ? 'SOURCE_INITIALE_RECONNUE' : 'REVUE_PRIVEE_REQUISE',
+    nomHistoriqueCode: inspected.codeName === 'Code', sourceCompleteConnue: inspected.known };
+}); }
 // Approbation initiale de la liaison existante, aucune écriture distante.
 function initialiserMaintenance() { return maintAction_('INITIALISATION', function () {
   maintLocalTarget_();
   maintRequire_(!maintProps_().getProperty('ENROLLMENT'), 'DEJA_INITIALISE');
-  maintMetadata_();
-  const response = maintGoogle_('get', '/v1/projects/' + MAINT_DESTINATION.scriptId + '/content');
-  maintRequire_(response.scriptId === MAINT_DESTINATION.scriptId, 'CIBLE_INCORRECTE');
-  const files = maintFiles_(response.files, true);
-  const parsed = maintBinding_(files.filter(function (f) { return f.name === 'Synchroniseur'; })[0].source);
-  const digest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, parsed.normalized, Utilities.Charset.UTF_8));
-  maintRequire_(MAINT_KNOWN_SOURCES.indexOf(digest) !== -1 && parsed.block !== MAINT_TEMPLATE &&
-    parsed.binding.scriptId !== MAINT_DESTINATION.scriptId && parsed.binding.scriptId !== ScriptApp.getScriptId() &&
-    parsed.binding.accountEmail === Session.getEffectiveUser().getEmail(), 'SOURCE_INITIALE_NON_RECONNUE');
+  const inspected = maintInitial_();
+  maintRequire_(inspected.known, 'SOURCE_INITIALE_NON_RECONNUE');
   maintProps_().setProperty('ENROLLMENT', JSON.stringify({ target: MAINT_DESTINATION.scriptId,
-    maintenance: ScriptApp.getScriptId(), binding: parsed.binding }));
+    maintenance: ScriptApp.getScriptId(), binding: inspected.binding, codeName: inspected.codeName }));
   return { etat: 'LIAISON_EXISTANTE_VERROUILLEE' };
 }); }
 function maintCanonical_(value) {

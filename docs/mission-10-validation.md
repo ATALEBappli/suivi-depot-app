@@ -26,7 +26,8 @@ installation, publication, fusion, modification Sheets ou du compte PROD.
 Un seul ID privé à renseigner dans la copie Google : celui de REC-Synchronisation,
 jamais celui du backend. initialiserMaintenance accepte les sources normalisées
 Mission 7 ou Mission 9 dont les empreintes complètes sont inscrites dans le code.
-Seule variation admise : les deux valeurs privées du bloc strict REC_DESTINATION.
+Variations admises : les deux valeurs privées du bloc strict REC_DESTINATION et
+le nom initial explicitement limité à Code ou Synchroniseur (un seul script).
 La fonction contrôle aussi manifeste exact, compte, titre, identité et absence de
 parentId. Elle mémorise la liaison existante dans les propriétés privées locales,
 sans remplacer les sources du synchroniseur ni exécuter son code. Réinitialiser
@@ -50,7 +51,7 @@ peut servir de plan RESTORE, et inversement. L'index des sauvegardes reste limit
 
 Node 24, sans installation npm ni client réseau dans les contextes fonctionnels :
 
-- node tests/rec-maintenance.mjs : 92 scénarios réussis.
+- node tests/rec-maintenance.mjs : 106 scénarios réussis.
 - node tests/rec-synchronisation.mjs : 46 scénarios réussis.
 - node scripts/check-apps-script.mjs : 84 scénarios backend réussis.
 - node tests/isolation.mjs : réussi, hors réseau.
@@ -102,3 +103,40 @@ service/client OAuth ; ce raccordement n'a pas été effectué ici.
 
 Attendre la validation du propriétaire avant fusion et une autorisation distincte
 avant installation ou toute opération Google réelle. Aucun déploiement fourni.
+
+## Correction avant fusion de la PR #9 — installation historique
+
+La même PR est corrigée, sans nouvelle PR. Le nom API `Code` est accepté à
+l'initialisation et mémorisé dans ENROLLMENT.codeName. Le candidat public reste
+`Synchroniseur.gs` ; seule sa représentation dans Google reprend le nom enrôlé.
+Les contrôles de suppression ne sont pas contournés. Sauvegarde et restauration
+conservent le nom et le contenu exacts. Un ancien ENROLLMENT sans codeName reste
+compatible uniquement avec Synchroniseur.
+
+Les fonctions manuelles de diagnostic ne sont pas connues du dépôt. Aucun suffixe
+n'est ignoré, aucune fonction n'est autorisée par son nom et aucune empreinte
+privée fournie par l'utilisateur n'est ajoutée. Elles entraînent un refus fermé
+à l'initialisation. diagnostiquerInstallation partage les contrôles initiaux mais
+ne crée aucun enrôlement et ne touche ni PLAN ni APPROVAL : deux GET seulement,
+aucun GitHub/Drive/backend, aucune écriture distante ou locale. Le résultat se
+limite à un état et deux booléens, ou au refus générique de sécurité.
+
+Le guide décrit la comparaison locale hors réseau et la revue privée sans
+transmettre les sources, différences, identifiants ou jetons. Conserver les ajouts
+nécessite une future reconnaissance revue du contenu exact ; les retirer exige
+une intervention manuelle distinctement autorisée, avec copie privée de retour
+arrière. Aucun de ces chemins n'est exécuté dans cette mission.
+
+Les 14 scénarios supplémentaires couvrent Code Mission 7 → Mission 9 exact,
+Code Mission 9 → candidat public approuvé, sauvegardes/restaurations exactes,
+refus des ajouts manuels et code global sans exécution, noms ambigus/inconnus,
+manifestes et identités incorrects, verrouillage du nom après enrôlement,
+diagnostic inconnu précis sans mutation des propriétés et anciens enrôlements.
+Tous les contrôles listés ci-dessus ont été réexécutés sous Node 24.22.1 après
+correction. Aucun fichier backend métier ni synchroniseur existant modifié.
+
+Limite explicite : la compatibilité de l'installation réelle avec diagnostics
+n'est pas certifiée. Aucun accès Google n'a été fait. La migration est démontrée
+sur les références publiques et les mocks ; l'installation inconnue reste bloquée
+jusqu'à la revue privée décrite dans le guide, sans affaiblir les approbations,
+sauvegardes et restaurations.

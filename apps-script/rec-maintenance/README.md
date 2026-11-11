@@ -29,11 +29,11 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
    Confirmer que le compte REC n'a aucun accès PROD, même indirect, et que les deux
    paramètres déjà installés désignent bien le backend REC et le compte REC.
    Cette attestation reste indispensable : un ID n'indique pas à lui seul REC/PROD.
-2. Vérifier les fichiers existants : exactement `Synchroniseur` (script, affiché
-   comme `Synchroniseur.gs`) et `appsscript` (JSON). La version initiale doit être
+2. Vérifier les fichiers existants : exactement un script `Synchroniseur` ou le nom historique `Code`
+   (affichés avec `.gs`) et `appsscript` (JSON). La version initiale doit être
    exactement celle de Mission 7 ou Mission 9, avec uniquement les deux valeurs
-   privées remplacées. Toute autre édition, renommage ou formatage initial est
-   bloquant : arrêter et faire revoir la différence, sans désactiver le contrôle.
+   privées remplacées. Les ajouts de diagnostics et toute autre édition ou formatage initial sont
+   bloquants : arrêter et faire revoir la différence, sans désactiver le contrôle.
 3. Créer un nouveau projet Apps Script autonome nommé **REC-Maintenance**, privé,
    sans autre éditeur. Copier **une seule fois** le fichier `Maintenance.gs` revu
    depuis GitHub Raw/Copy ; renommer le fichier initial `Maintenance` et y coller
@@ -56,7 +56,8 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
    Le PAT doit être limité à `ATALEBappli/suivi-depot-app`, Contents: Read-only.
    Il ne peut pas être récupéré automatiquement depuis les propriétés d'un autre
    projet. Ne jamais le coller dans le code, les logs, GitHub ou la conversation.
-6. Sélectionner `initialiserMaintenance` près du bouton Exécuter, puis Exécuter.
+6. Lancer d’abord `diagnostiquerInstallation` (voir le diagnostic privé ci-dessous).
+   Si `SOURCE_INITIALE_RECONNUE`, sélectionner `initialiserMaintenance` près du bouton Exécuter, puis Exécuter.
    Examiner le consentement : sources Apps Script, requêtes externes, fichiers
    Drive créés/ouverts par l'application et adresse du compte. Aucun accès Sheets,
    Drive global ou gestion des déploiements demandé. Le résultat doit être
@@ -77,6 +78,71 @@ les accès actuels. Aucun installateur OAuth externe n'est fourni. Les versions
 futures du synchroniseur n'exigeront pas de nouveau collage tant que leur contrat
 reste compatible avec ce noyau. Une évolution de Maintenance elle-même, de ses
 permissions ou de l'enveloppe protégée exigera une intervention distincte revue.
+
+## Première installation historique et diagnostic privé
+
+Le nom API est `Code`, sans suffixe : `Code.gs` n'est que son affichage dans
+l'éditeur. L'initialisation accepte explicitement `Code` ou `Synchroniseur`,
+jamais les deux, jamais un nom libre. Le nom est verrouillé dans ENROLLMENT et
+conservé lors de la matérialisation du candidat GitHub : Mission 7 `Code.gs`
+reste `Code.gs` en Mission 9. Aucun renommage ni suppression implicitement
+approuvée. Les sauvegardes/restaurations conservent ce même nom et le texte exact.
+Les anciens enrôlements sans codeName restent limités à `Synchroniseur`.
+
+La reconnaissance porte sur **tout le texte**, après remplacement du seul bloc
+REC_DESTINATION strictement parsé par le bloc public à marqueurs. L'empreinte
+SHA-256 doit appartenir aux deux références Mission 7/9 déjà approuvées ; aucune
+nouvelle empreinte privée ni liste de noms de fonctions n'est acceptée.
+Le manifeste, l'enveloppe, le compte effectif, les identités distinctes et les
+métadonnées du projet restent contrôlés. L'installation avec diagnostics manuels
+n'est donc pas déclarée compatible sans revue de leur contenu réel.
+
+Après autorisation distincte d'installation, `diagnostiquerInstallation` ne lit
+que les métadonnées et les sources de la cible. Aucun accès GitHub, Drive, backend,
+aucune écriture de propriété, aucun plan ou approbation créé/effacé. Il retourne
+uniquement un état et deux booléens ; aucun identifiant, empreinte privée, nom de
+fonction, source ou erreur brute. `REVUE_PRIVEE_REQUISE` signifie que la structure,
+le manifeste, la liaison et l'enveloppe passent, mais que le texte complet est
+inconnu (diagnostics inclus). `REFUSE` signifie qu'un contrôle préalable échoue ;
+ce diagnostic ne cherche pas à deviner un format ou une identité.
+
+Procédure de revue **à préparer maintenant, à effectuer ultérieurement en privé** :
+
+1. Arrêter les éditions/exécutions concurrentes du synchroniseur. Vérifier les
+   identités dans Google en privé. Ne jamais transmettre les sources Google dans
+   la conversation, les commentaires de PR, un service de diff ou des logs.
+2. Garder une copie intégrale privée de tous les fichiers et une copie séparée
+   des réglages/propriétés nécessaires au retour arrière, dans un stockage local
+   protégé sans synchronisation publique. Les exports contiennent des données
+   privées ; aucun export n'est demandé ni effectué par cette mission.
+3. Dans un outil local hors réseau, comparer une **copie** du script à la fixture
+   publique Mission 7 (ou au fichier Mission 9 du commit exact revu). Neutraliser
+   uniquement les deux valeurs du bloc REC_DESTINATION dans la copie de travail,
+   sans modifier l'original. Vérifier chaque différence localement, y compris
+   position des ajouts, déclarations dupliquées, code global, manifeste et autres
+   fichiers. Un nom « diagnostic » ne prouve pas l'innocuité d'une fonction.
+   Ne pas partager le diff, même supposé expurgé : il peut contenir d'autres secrets.
+4. Partager uniquement un constat humain sans détails privés : référence publique
+   comparée, égalité du noyau oui/non, ajouts présents oui/non, revue terminée ou
+   bloquée. Ce constat ne constitue pas une nouvelle empreinte approuvée et ne
+   déverrouille pas Maintenance.
+5. Si les ajouts doivent rester, arrêter l'installation. Une revue privée du texte
+   exact, puis une évolution de reconnaissance revue et testée séparément sont
+   nécessaires ; ne pas ajouter une empreinte utilisateur dans les propriétés,
+   ignorer un suffixe, supprimer les contrôles ou élargir les noms autorisés.
+   Si le propriétaire décide plutôt de retirer les diagnostics, une intervention
+   distinctement autorisée, sauvegardée et réversible doit rétablir exactement
+   une référence publique avec les deux valeurs privées conservées. Ne jamais
+   remplacer toute la configuration par les marqueurs publics.
+6. Relancer le diagnostic puis l'initialisation uniquement après cette validation.
+   S'arrêter après simulation pour la première installation. La sauvegarde Drive
+   automatique reste obligatoire avant tout PUT ultérieurement autorisé ; elle ne
+   remplace pas la copie privée préalable à une éventuelle intervention manuelle.
+
+Aucun diagnostic de l'installation réelle n'a été exécuté : la compatibilité
+Mission 7 → Mission 9 est vérifiée sur mocks pour `Code.gs` exact et les refus des
+ajouts manuels. La réussite passée d'une synchronisation ne prouve pas l'identité
+du texte installé aujourd'hui.
 
 ## Chaque mise à jour future : un SHA, trois exécutions
 
