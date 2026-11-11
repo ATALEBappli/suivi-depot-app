@@ -1,71 +1,86 @@
-# Backend historique versionné — Mission 3
+# Backend REC — garde-fous Mission 8
 
-`Code.gs` provient du fichier intégral fourni par le propriétaire dans la
-conversation. `appsscript.json` reprend le manifeste fourni. Aucun export Google
-ni accès au projet ou aux données de production n'a été effectué.
+Code réservé à REC ; aucun déploiement ou accès Google effectué par cette PR.
+Les données et les quatre onglets doivent déjà exister. Aucune initialisation,
+migration, création d'onglet ou écriture n'a lieu pendant une lecture.
 
-La seule adaptation exécutable du backend est la déclaration de `SHEET_ID`, qui
-lit désormais `PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID')`.
-Les deux commentaires associés ont été adaptés et les espaces d'indentation
-normalisés. Aucun identifiant réel ni le marqueur masqué reçu n'est inclus.
+## Configuration privée obligatoire
 
-Si cette propriété est absente ou vide, le repli historique vers
-`SpreadsheetApp.getActiveSpreadsheet()` est conservé. Pour un script autonome,
-la propriété doit désigner le classeur autorisé ; aucune valeur par défaut ni
-validation supplémentaire n'a été ajoutée. Ce comportement diffère du modèle
-strict `templates/Config.gs.example`, qui n'est ni importé ni exécuté.
-Ne pas modifier les propriétés du projet de production dans cette mission.
+Propriétés du projet backend, hors Git :
 
-## Contrats conservés
+- `APP_ENV` : exactement `REC`.
+- `SPREADSHEET_ID` : cible à ouvrir, obligatoire, sans espaces périphériques.
+- `REC_SPREADSHEET_ID` : cible autorisée, obligatoire et égale à la précédente.
 
-- `doGet` sans action (ou action inconnue) : `{ok:true, rows:[...]}` ; erreurs de
-  lecture : `{ok:false,error:...}`.
-- `ping=1` : texte `pong`, ou callback JSONP recevant `"pong"`.
-- `action=add` : ajout d'une transaction puis `{ok:true}`. Les erreurs de cette
-  branche restent non interceptées, conformément au code historique.
-- `doPost` : ajout depuis le corps JSON, réponse `{ok:true}` ou `{ok:false,error}`.
-- `action=config&what=all` : `{ok:true,config:{logements,locaux,hedam}}`.
-- `action=config&save=logements|locaux|hedam&payload=...` : remplacement de la
-  configuration ciblée, payload décodé puis analysé comme JSON ; `{ok:true}` ou
-  `{ok:false,error}`. Payload absent : tableau vide.
-- `action=config&debug=1` : renvoie les paramètres reçus.
-- `callback` : JSONP, nom filtré avec l'expression historique ; sans callback,
-  réponses JSON sauf le ping texte.
+L'identité retournée par le classeur est également vérifiée. Aucun repli actif.
+Ces deux propriétés sont un contrôle de cohérence, pas une frontière contre un
+éditeur malveillant : un éditeur peut changer les deux. Le compte REC doit rester
+sans accès PROD. Aucun identifiant privé ne doit apparaître dans les logs ou Git.
 
-Les appels observés dans `app.js` (lecture, ajout GET, lecture globale et trois
-sauvegardes de configuration, callback) correspondent à ces branches. Aucun
-changement frontend n'est nécessaire ni inclus.
+Chaque accès contrôle les quatre onglets : existence, présence de la ligne
+d'en-tête, largeur utilisée exacte et noms/ordre exacts des en-têtes.
 
-Feuilles et colonnes conservées :
-
-| Feuille | Colonnes, dans l'ordre |
+| Onglet | Colonnes dans l'ordre |
 | --- | --- |
-| `transactions` | type, date, montant, sous_bloc, description, local, locataire, fournisseur, periode, moyen, personne |
-| `config_logements` | num, type, locataire, loyer |
-| `config_locaux` | code, nom, locataire, loyer |
-| `config_hedam` | code, nom |
+| transactions | type, date, montant, sous_bloc, description, local, locataire, fournisseur, periode, moyen, personne |
+| config_logements | num, type, locataire, loyer |
+| config_locaux | code, nom, locataire, loyer |
+| config_hedam | code, nom |
 
-L'initialisation historique des feuilles et les neuf entrées Hedam sont
-conservées. Aucun script de migration n'est ajouté. Les sauvegardes de
-configuration existantes utilisent `clearContents()` ; elles ne doivent pas
-être exécutées en production pendant cette mission.
+Des colonnes utilisées supplémentaires, même ailleurs sous l'en-tête, bloquent
+l'accès. Les colonnes physiquement vides à droite ne comptent pas. Les données
+historiques ne sont ni réécrites ni assainies par les lectures.
 
-## Risques historiques conservés
+## Contrat et validations avant écriture
 
-Le manifeste autorise `ANYONE_ANONYMOUS` avec `USER_DEPLOYING` : une personne
-anonyme peut appeler le backend sous l'identité du déployeur, dans la limite des
-autorisations de ce dernier. Le code fourni ne vérifie ni identité ni rôle, y
-compris pour les écritures et remplacements de configuration via GET/JSONP.
-Cette configuration n'est pas sécurisée. Le filtrage du callback et l'extraction
-de l'identifiant vers les propriétés ne constituent pas une authentification.
-Aucun mécanisme improvisé ni changement d'accès n'est introduit ; leur évolution
-nécessite une conception et une validation séparées.
+Conservation des enveloppes `{ok:true,rows}`, `{ok:true,config}`, `{ok:true}` et
+`{ok:false,error}`. Les routes GET/JSONP historiques restent présentes à ce stade,
+ainsi que POST JSON pour ajouter une transaction. Ce code n'est pas une API
+publique sécurisée : aucune authentification métier n'est ajoutée ici.
 
-Autres comportements conservés : corps POST malformé accepté comme objet vide,
-zéro numérique remplacé par une chaîne vide via `||`, absence de validation
-métier renforcée. Aucun correctif hors périmètre n'est inclus.
+Corrections justifiées :
 
-Le manifeste garde Europe/Paris, V8, STACKDRIVER et les dépendances vides, sans
-ajout de portées OAuth explicites. Les portées effectives, déclencheurs et droits
-du projet Google n'ont pas été interrogés. Les tests Node ne certifient pas le
-fonctionnement dans Apps Script ni les permissions Google.
+- POST absent, malformé, null, tableau ou champs inconnus : refus, aucune ligne vide.
+- Date obligatoire ISO `YYYY-MM-DD`, calendrier réel vérifié.
+- Type textuel non vide ; les catégories métier ne sont pas redéfinies ici.
+- Montants/loyers : nombres finis ou chaînes décimales à point, zéro conservé,
+  non négatifs, au plus deux décimales, plafond technique de 1 milliard.
+  Les montants négatifs et le plafond nécessitent confirmation métier avant usage.
+- Textes facultatifs absents : chaîne vide ; null, objets et autres types refusés.
+  Maximum 2000 caractères par texte ; préfixes de formule `= + - @`, même après
+  espaces/contrôles, refusés. Certains textes légitimes préfixés seront donc rejetés.
+- Configurations : tableaux de 5000 objets maximum, colonnes connues, identifiant
+  non vide et unique. Payload absent refusé ; tableau vide explicite conserve la
+  sémantique d'effacement. Tous les éléments sont validés avant toute écriture.
+- Remplacement de configuration par un seul `setValues` rectangulaire ; anciennes
+  lignes excédentaires vidées, en-tête conservé. Aucun `clearContents` préalable.
+- Erreurs publiques fixes, sans exception brute ni écho de paramètres ; debug désactivé.
+- Callback JSONP validé entièrement plutôt que transformé silencieusement.
+
+## Accès et limites
+
+Le manifeste candidat passe de `ANYONE_ANONYMOUS` à `MYSELF` : propriétaire seul.
+Il ne modifie aucun déploiement existant et ne fournit pas une connexion par mot
+de passe. Ne pas déployer anonymement. Le frontend actuel n'est pas raccordable
+à ce backend privé sans l'architecture d'authentification à valider séparément.
+
+`REC-Synchronisation` reste inchangé. Sa liste fermée de manifestes refuse ce
+nouveau manifeste ; le test de non-régression le démontre. Une future modification
+séparée et autorisée du synchroniseur sera indispensable avant synchronisation.
+Ne pas contourner le contrôle ou restaurer l'accès anonyme pour faciliter l'envoi.
+
+Pas encore de rôles, propriétaire de transaction, historique, verrouillage,
+idempotence ou transaction atomique multi-onglets. Les éditeurs Sheets restent
+capables de modifier les données directement. Les requêtes répétées peuvent
+ajouter des doublons. Le résultat d'une écriture interrompue peut être incertain :
+pas de nouvel essai automatique. Les limites de cellules, quotas et droits Google
+ne sont pas certifiés par les mocks.
+
+## Validation hors réseau
+
+`node scripts/check-apps-script.mjs` charge le vrai Code.gs dans node:vm avec des
+classeur/onglets fictifs et sans service réseau disponible. Il remplace les tests
+historiques qui attendaient précisément les comportements dangereux corrigés.
+`node tests/rec-synchronisation.mjs` utilise un manifeste historique explicite
+pour ses anciens scénarios et vérifie séparément le refus du manifeste candidat.
+Aucun code du répertoire rec-synchronisation n'est modifié.
