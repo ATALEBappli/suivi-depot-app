@@ -5,7 +5,11 @@ import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../apps-script/rec-synchronisation/Synchroniseur.gs', import.meta.url), 'utf8');
-const manifest = JSON.parse(readFileSync(new URL('../apps-script/src/appsscript.json', import.meta.url)));
+const candidateManifest = JSON.parse(readFileSync(new URL('../apps-script/src/appsscript.json', import.meta.url)));
+// Fixture historique : le synchroniseur inchangé n'autorise pas encore MYSELF.
+const manifest = {timeZone:'Europe/Paris', dependencies:{},
+  webapp:{access:'ANYONE_ANONYMOUS',executeAs:'USER_DEPLOYING'},
+  exceptionLogging:'STACKDRIVER', runtimeVersion:'V8'};
 const syncManifest = JSON.parse(readFileSync(new URL('../apps-script/rec-synchronisation/appsscript.json', import.meta.url)));
 assert.deepEqual(syncManifest.oauthScopes, [
   'https://www.googleapis.com/auth/script.projects', 'https://www.googleapis.com/auth/script.external_request',
@@ -110,6 +114,11 @@ function setup(personalized = true) {
 function test(name, fn) { fn(); count++; console.log('OK ' + name); }
 test('Installation livrée inactive et aucun réseau avant personnalisation', () => {
   const x = setup(false); assert.equal(x.call('verifierConfiguration').etat, 'REFUSE'); assert.equal(x.calls.length, 0);
+});
+test('Manifeste Mission 8 refusé sans PUT par le synchroniseur inchangé', () => {
+  const x = setup(); x.state.candidate[1].source = JSON.stringify(candidateManifest);
+  assert.equal(x.call('simulerSynchronisation').etat, 'REFUSE');
+  assert.equal(x.state.puts, 0); assert.equal(x.drive.size, 0);
 });
 test('Configuration et simulation sans PUT ni sauvegarde Drive', () => {
   const x = setup(); assert.equal(x.call('verifierConfiguration').etat, 'CONFIGURATION_VERIFIEE');
