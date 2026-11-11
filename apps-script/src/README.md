@@ -64,10 +64,10 @@ Il ne modifie aucun déploiement existant et ne fournit pas une connexion par mo
 de passe. Ne pas déployer anonymement. Le frontend actuel n'est pas raccordable
 à ce backend privé sans l'architecture d'authentification à valider séparément.
 
-`REC-Synchronisation` reste inchangé. Sa liste fermée de manifestes refuse ce
-nouveau manifeste ; le test de non-régression le démontre. Une future modification
-séparée et autorisée du synchroniseur sera indispensable avant synchronisation.
-Ne pas contourner le contrôle ou restaurer l'accès anonyme pour faciliter l'envoi.
+La Mission 9 adapte séparément `REC-Synchronisation` : seuls ce manifeste MYSELF
+et le contrat historique exact sont autorisés, y compris lors d'une restauration.
+Voir [les prérequis et risques](../../docs/mission-9-validation.md), notamment
+le partage depuis le propriétaire initial et l'absence de preuve d'accès web REC.
 
 Pas encore de rôles, propriétaire de transaction, historique, verrouillage,
 idempotence ou transaction atomique multi-onglets. Les éditeurs Sheets restent
@@ -81,6 +81,5 @@ ne sont pas certifiés par les mocks.
 `node scripts/check-apps-script.mjs` charge le vrai Code.gs dans node:vm avec des
 classeur/onglets fictifs et sans service réseau disponible. Il remplace les tests
 historiques qui attendaient précisément les comportements dangereux corrigés.
-`node tests/rec-synchronisation.mjs` utilise un manifeste historique explicite
-pour ses anciens scénarios et vérifie séparément le refus du manifeste candidat.
-Aucun code du répertoire rec-synchronisation n'est modifié.
+`node tests/rec-synchronisation.mjs` utilise le candidat MYSELF par défaut,
+conserve une fixture historique explicite et teste les refus et restaurations.

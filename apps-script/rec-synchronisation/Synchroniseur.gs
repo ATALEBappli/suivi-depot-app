@@ -10,11 +10,16 @@ const REC_REPO = 'ATALEBappli/suivi-depot-app';
 const REC_TITLE = 'SuiviDepotAPI-REC';
 const REC_PREFIX = 'apps-script/src/';
 const REC_TTL = 30 * 60 * 1000;
-const REC_MANIFEST = {
+// Deux contrats revus, jamais alimentés par une propriété ou le candidat.
+const REC_APPROVED_MANIFESTS = [ {
   timeZone: 'Europe/Paris', dependencies: {},
   webapp: { access: 'ANYONE_ANONYMOUS', executeAs: 'USER_DEPLOYING' },
   exceptionLogging: 'STACKDRIVER', runtimeVersion: 'V8'
-};
+}, {
+  timeZone: 'Europe/Paris', dependencies: {},
+  webapp: { access: 'MYSELF', executeAs: 'USER_DEPLOYING' },
+  exceptionLogging: 'STACKDRIVER', runtimeVersion: 'V8'
+} ];
 
 function verifierConfiguration() { return recAction_('CONFIGURATION', function () {
   recConfig_(); recMetadata_(); return { etat: 'CONFIGURATION_VERIFIEE' };
@@ -153,8 +158,6 @@ function recGithub_(sha) {
   });
   recRequire_(seen['Code.gs'] && seen['appsscript.json'], 'SOURCES_MANQUANTES');
   const result = recFiles_(files);
-  const manifest = JSON.parse(result.filter(function (f) { return f.name === 'appsscript'; })[0].source);
-  recRequire_(recCanonical_(manifest) === recCanonical_(REC_MANIFEST), 'MANIFESTE_NON_APPROUVE');
   return result;
 }
 function recFiles_(files) {
@@ -168,7 +171,10 @@ function recFiles_(files) {
     if (f.name === 'appsscript') {
       recRequire_(f.type === 'JSON', 'MANIFESTE_INVALIDE');
       let parsed; try { parsed = JSON.parse(f.source); } catch (_) { throw new Error('MANIFESTE_INVALIDE'); }
-      recRequire_(parsed && parsed.runtimeVersion === 'V8' && typeof parsed.timeZone === 'string', 'MANIFESTE_INVALIDE');
+      // Même contrôle pour GitHub, l'état distant et les sauvegardes restaurées.
+      recRequire_(REC_APPROVED_MANIFESTS.some(function (approved) {
+        return recCanonical_(parsed) === recCanonical_(approved);
+      }), 'MANIFESTE_NON_APPROUVE');
       manifest = true;
     }
     return { name: f.name, type: f.type, source: f.source };
