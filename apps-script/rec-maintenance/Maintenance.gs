@@ -251,159 +251,23 @@ function maintInitial_() {
     parsed.binding.scriptId !== MAINT_DESTINATION.scriptId && parsed.binding.scriptId !== ScriptApp.getScriptId() &&
     parsed.binding.accountEmail === Session.getEffectiveUser().getEmail(), 'IDENTITE_INITIALE_INCORRECTE');
   const digest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, parsed.normalized, Utilities.Charset.UTF_8));
-  return { codeName: code[0].name, binding: parsed.binding,
-    known: MAINT_KNOWN_SOURCES.indexOf(digest) !== -1 };
+  const exact = MAINT_KNOWN_SOURCES.indexOf(digest) !== -1;
+  // Reconnaissance initiale seulement : conserver chaque caractère intérieur.
+  // Ne pas utiliser trim/\s : seuls SP ASCII, TAB, CR et LF terminaux sont admis.
+  const terminal = parsed.normalized.replace(/[ \t\r\n]*$/, '') + '\n';
+  const terminalDigest = maintHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, terminal, Utilities.Charset.UTF_8));
+  const terminalKnown = MAINT_KNOWN_SOURCES.indexOf(terminalDigest) !== -1;
+  return { codeName: code[0].name, binding: parsed.binding, known: exact || terminalKnown,
+    terminalNormalizationRequired: !exact && terminalKnown };
 }
 // Aucun enrôlement, plan, approbation, sauvegarde ou écriture distante.
 // Un ajout de diagnostics reste inconnu tant que son contenu exact n'a pas été revu.
 function diagnostiquerInstallation() { return maintAction_('DIAGNOSTIC_INITIAL', function () {
   const inspected = maintInitial_();
   return { etat: inspected.known ? 'SOURCE_INITIALE_RECONNUE' : 'REVUE_PRIVEE_REQUISE',
-    nomHistoriqueCode: inspected.codeName === 'Code', sourceCompleteConnue: inspected.known };
+    nomHistoriqueCode: inspected.codeName === 'Code', sourceCompleteConnue: inspected.known,
+    normalisationTerminaleNecessaire: inspected.terminalNormalizationRequired };
 }); }
-// Références publiques immuables : SHA Git blob et SHA-256 déjà autorisés.
-// Aucun chemin, SHA ou hash fourni par l'utilisateur ne peut les remplacer.
-const MAINT_DIAG_REFERENCES = [
-  { mission: 'MISSION_7', blob: '03d9f37a52e8a635cf237352e8ae3930d7ce7e0a', hash: MAINT_KNOWN_SOURCES[0] },
-  { mission: 'MISSION_9', blob: '13c4498003e0c2dca38b9ec671d93c303be430a4', hash: MAINT_KNOWN_SOURCES[1] }
-];
-function maintDiagReference_(ref) {
-  const blob = maintGit_('blobs/' + ref.blob);
-  maintRequire_(blob.sha === ref.blob && blob.encoding === 'base64' &&
-    Number.isInteger(blob.size) && blob.size > 0 && blob.size <= 500000 &&
-    typeof blob.content === 'string' && blob.content.length <= 700000, 'REFERENCE_INVALIDE');
-  const bytes = Utilities.base64Decode(blob.content.replace(/\s/g, ''));
-  const header = Utilities.newBlob('blob ' + bytes.length + '\x00').getBytes();
-  maintRequire_(bytes.length === blob.size && maintHex_(Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_1, header.concat(bytes))) === ref.blob, 'REFERENCE_CORROMPUE');
-  const source = Utilities.newBlob(bytes).getDataAsString('UTF-8'), parsed = maintBinding_(source);
-  maintRequire_(parsed.block === MAINT_TEMPLATE && maintHex_(Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256, parsed.normalized, Utilities.Charset.UTF_8)) === ref.hash, 'REFERENCE_NON_APPROUVEE');
-  return source;
-}
-function maintDiagParse_(source) {
-  const comments = [];
-  const ast = MAINT_ACORN.parse(source, { ecmaVersion: 2022, sourceType: 'script', onComment: comments });
-  return { ast: ast, comments: comments.map(function (c) { return { type: c.type, value: c.value.replace(/\r\n|\r/g, '\n') }; }) };
-}
-// Aucun effacement de commentaires/espaces par regex. Seuls les deux littéraux
-// de la déclaration réelle sont neutralisés ; leurs positions viennent du parseur.
-function maintDiagNormalize_(source, ast, privateBinding) {
-  let bindingCount = 0;
-  const countBindings = function (node) {
-    if (!node || typeof node !== 'object') return;
-    if ((node.type === 'VariableDeclarator' || node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') &&
-      node.id && node.id.type === 'Identifier' && node.id.name === 'REC_DESTINATION') bindingCount++;
-    Object.keys(node).forEach(function (key) {
-      if (Array.isArray(node[key])) node[key].forEach(countBindings);
-      else if (node[key] && typeof node[key] === 'object') countBindings(node[key]);
-    });
-  };
-  countBindings(ast);
-  maintRequire_(bindingCount === 1, 'CONFIGURATION_AMBIGUE');
-  const declarations = ast.body.filter(function (n) {
-    return n.type === 'VariableDeclaration' && n.declarations.some(function (d) {
-      return d.id.type === 'Identifier' && d.id.name === 'REC_DESTINATION';
-    });
-  });
-  maintRequire_(declarations.length === 1 && declarations[0].kind === 'const' &&
-    declarations[0].declarations.length === 1, 'CONFIGURATION_AMBIGUE');
-  const init = declarations[0].declarations[0].init;
-  maintRequire_(init && init.type === 'CallExpression' && !init.optional && init.arguments.length === 1 &&
-    init.callee.type === 'MemberExpression' && !init.callee.computed && !init.callee.optional &&
-    init.callee.object.type === 'Identifier' && init.callee.object.name === 'Object' &&
-    init.callee.property.name === 'freeze' && init.arguments[0].type === 'ObjectExpression', 'CONFIGURATION_INVALIDE');
-  const props = init.arguments[0].properties, binding = {}, edits = [];
-  maintRequire_(props.length === 2, 'CONFIGURATION_INVALIDE');
-  props.forEach(function (p) {
-    const key = p.key && (p.key.type === 'Identifier' ? p.key.name : p.key.value);
-    maintRequire_(p.type === 'Property' && !p.computed && !p.method && !p.shorthand && p.kind === 'init' &&
-      ['scriptId', 'accountEmail'].indexOf(key) !== -1 && !Object.prototype.hasOwnProperty.call(binding, key) &&
-      p.value.type === 'Literal' && typeof p.value.value === 'string', 'CONFIGURATION_INVALIDE');
-    binding[key] = p.value.value;
-    edits.push({ start: p.value.start, end: p.value.end });
-  });
-  if (privateBinding) {
-    maintRequire_(/^[A-Za-z0-9_-]{20,200}$/.test(binding.scriptId) && binding.scriptId !== 'A_PERSONNALISER_HORS_GIT' &&
-      binding.scriptId !== MAINT_DESTINATION.scriptId && binding.scriptId !== ScriptApp.getScriptId() &&
-      /^[A-Za-z0-9_.+-]+@[A-Za-z0-9.-]+$/.test(binding.accountEmail) &&
-      binding.accountEmail === Session.getEffectiveUser().getEmail(), 'IDENTITE_INITIALE_INCORRECTE');
-  } else maintRequire_(binding.scriptId === 'A_PERSONNALISER_HORS_GIT' &&
-    binding.accountEmail === 'A_PERSONNALISER_HORS_GIT', 'REFERENCE_PERSONNALISEE');
-  edits.sort(function (a, b) { return b.start - a.start; }).forEach(function (e) {
-    source = source.slice(0, e.start) + "'A_PERSONNALISER_HORS_GIT'" + source.slice(e.end);
-  });
-  return source;
-}
-// Comparaison structurelle uniquement : positions et graphie brute ne sont pas
-// sémantiques. Les directives, regex, littéraux et ordre des nœuds sont conservés.
-function maintDiagAst_(value) {
-  if (typeof value === 'bigint') return { bigint: String(value) };
-  if (Array.isArray(value)) return value.map(maintDiagAst_);
-  if (value && typeof value === 'object') {
-    const result = {};
-    Object.keys(value).forEach(function (k) {
-      if (k !== 'start' && k !== 'end' && !(k === 'raw' && value.type === 'Literal')) {
-        result[k] = maintDiagAst_(value[k]);
-      }
-    });
-    return result;
-  }
-  return value;
-}
-function maintDiagCompare_(actual, reference) {
-  const a = maintDiagParse_(actual), b = maintDiagParse_(reference);
-  const textEqual = actual === reference;
-  const astEqual = maintCanonical_(maintDiagAst_(a.ast)) === maintCanonical_(maintDiagAst_(b.ast));
-  const commentsEqual = maintCanonical_(a.comments) === maintCanonical_(b.comments);
-  const lines = function (text) {
-    const parts = text.split(/(\r\n|[\r\n\u2028\u2029])/), result = [];
-    for (let i = 0; i < parts.length; i += 2) result.push(parts[i] + (parts[i + 1] || ''));
-    return result;
-  };
-  const left = lines(actual), right = lines(reference);
-  let prefix = 0, suffix = 0;
-  while (prefix < left.length && prefix < right.length && left[prefix] === right[prefix]) prefix++;
-  while (suffix < left.length - prefix && suffix < right.length - prefix &&
-    left[left.length - 1 - suffix] === right[right.length - 1 - suffix]) suffix++;
-  const functions = function (ast) { return ast.body.filter(function (n) { return n.type === 'FunctionDeclaration'; }).length; };
-  return { texteIdentique: textEqual, arbreSyntaxiqueIdentique: astEqual,
-    conclusion: textEqual ? 'TEXTE_IDENTIQUE' : !astEqual ? 'STRUCTURE_MODIFIEE_REVUE_REQUISE' :
-      commentsEqual ? 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX' : 'COMMENTAIRES_ET_EVENTUELLEMENT_FORMATAGE',
-    premiereLigneDifferente: textEqual ? null : prefix + 1,
-    lignesDansZoneDifferenteInstallee: textEqual ? 0 : left.length - prefix - suffix,
-    lignesDansZoneDifferenteReference: textEqual ? 0 : right.length - prefix - suffix,
-    ecartNombreFonctionsGlobales: functions(a.ast) - functions(b.ast) };
-}
-// Diagnostic autonome : aucun appel aux chemins mutateurs, pas d'ENROLLMENT requis.
-// Le parseur analyse des données ; il n'exécute jamais le code installé ou GitHub.
-function diagnostiquerDifferences() { return maintAction_('DIAGNOSTIC_DIFFERENCES', function () {
-  maintLocalTarget_(); maintMetadata_();
-  const data = maintGoogle_('get', '/v1/projects/' + MAINT_DESTINATION.scriptId + '/content');
-  maintRequire_(data.scriptId === MAINT_DESTINATION.scriptId && Array.isArray(data.files) && data.files.length === 2, 'FICHIERS_INVALIDES');
-  const code = data.files.filter(function (f) { return f && f.type === 'SERVER_JS' && ['Code', 'Synchroniseur'].indexOf(f.name) !== -1; });
-  const manifests = data.files.filter(function (f) { return f && f.name === 'appsscript' && f.type === 'JSON'; });
-  maintRequire_(code.length === 1 && manifests.length === 1 && data.files.every(function (f) {
-    return typeof f.source === 'string' && f.source.length > 0 && f.source.length <= 500000;
-  }), 'FICHIERS_INVALIDES');
-  let manifestOk = false;
-  try { manifestOk = maintCanonical_(JSON.parse(manifests[0].source)) === maintCanonical_(MAINT_MANIFEST); } catch (_) { /* résumé fixe */ }
-  const result = { etat: 'DIAGNOSTIC_LECTURE_SEULE', nomHistoriqueCode: code[0].name === 'Code',
-    manifesteConforme: manifestOk, syntaxe: 'ANALYSE_IMPOSSIBLE', comparaisons: [] };
-  if (typeof MAINT_ACORN === 'undefined') { result.syntaxe = 'ANALYSEUR_ABSENT'; return result; }
-  let parsed;
-  try { parsed = maintDiagParse_(code[0].source); } catch (_) { return result; }
-  result.syntaxe = 'VALIDE_ECMASCRIPT_2022';
-  const normalized = maintDiagNormalize_(code[0].source, parsed.ast, true);
-  maintRequire_(!!maintProps_().getProperty('GITHUB_READ_TOKEN'), 'JETON_GITHUB_ABSENT');
-  result.comparaisons = MAINT_DIAG_REFERENCES.map(function (ref) {
-    const source = maintDiagReference_(ref);
-    const normalizedReference = maintDiagNormalize_(source, maintDiagParse_(source).ast, false);
-    return Object.assign({ reference: ref.mission }, maintDiagCompare_(normalized, normalizedReference));
-  });
-  return result;
-}); }
-
 // Approbation initiale de la liaison existante, aucune écriture distante.
 function initialiserMaintenance() { return maintAction_('INITIALISATION', function () {
   maintLocalTarget_();

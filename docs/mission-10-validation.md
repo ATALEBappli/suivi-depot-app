@@ -1,19 +1,14 @@
 # Mission 10 — REC-Maintenance
 
-REC-Maintenance initial a été livré par la PR #9, basée sur main après la PR #8.
-La PR #9 étant fusionnée, le dernier diagnostic est proposé dans une nouvelle PR
-basée sur main, branche mission-10-diagnostic-differences. Aucun changement de
+PR indépendante basée sur main après fusion de la PR #8. Aucun changement de
 frontend, backend métier ou synchroniseur existant. Aucune opération Google,
 installation, publication, fusion, modification Sheets ou du compte PROD.
 
-## Fichiers de Mission 10
+## Fichiers ajoutés
 
 - apps-script/rec-maintenance/Maintenance.gs : outil autonome à cible unique,
   initialisation explicite, préservation de la liaison privée, cycle approuvé,
   sauvegarde privée relue, vérification et restauration.
-- apps-script/rec-maintenance/Acorn.gs : analyseur local Acorn 8.15.0, module intact
-  avec emballage privé, licence MIT incluse et provenance dans le guide.
-- apps-script/rec-maintenance/Acorn-LICENSE.txt : licence MIT originale.
 - apps-script/rec-maintenance/appsscript.json : quatre portées identiques au
   synchroniseur, sans webapp, bibliothèque ou déclencheur.
 - apps-script/rec-maintenance/README.md : installation Safari iPhone, parcours
@@ -56,15 +51,14 @@ peut servir de plan RESTORE, et inversement. L'index des sauvegardes reste limit
 
 Node 24, sans installation npm ni client réseau dans les contextes fonctionnels :
 
-- node tests/rec-maintenance.mjs : 147 scénarios réussis.
+- node tests/rec-maintenance.mjs : 135 scénarios réussis.
 - node tests/rec-synchronisation.mjs : 46 scénarios réussis.
 - node scripts/check-apps-script.mjs : 84 scénarios backend réussis.
 - node tests/isolation.mjs : réussi, hors réseau.
 - node tests/rec-sync.mjs : réussi, hors réseau.
-- node scripts/check-js.mjs : 17 sources JS/GS et scripts HTML syntaxiquement valides ; aucune exécution applicative.
+- node scripts/check-js.mjs : 16 sources JS/GS et scripts HTML syntaxiquement valides ; aucune exécution applicative.
 - git diff --check : réussi.
-- Revue du diff du dernier correctif depuis origin/main : quatre modifications
-  (Maintenance, README, tests, ce compte rendu), deux ajouts (Acorn et sa licence).
+- Revue du diff depuis origin/main : uniquement les sept ajouts décrits ci-dessus.
 
 Les nouveaux scénarios couvrent : installations inactives et connues Mission 7/9,
 refus des versions initiales inconnues, exactitude de la matérialisation privée,
@@ -101,7 +95,7 @@ restauration des jetons, données, déclencheurs ou déploiements. Le PAT devra
 elle-même n'a aucun mécanisme d'auto-mise à jour. La limite de 20 sauvegardes
 nécessitera un archivage privé distinct ; aucune purge automatique.
 
-Installation unique : trois collages initiaux (Maintenance, Acorn, manifeste) et un seul ID local, puis PAT privé,
+Installation unique : deux collages initiaux et un seul ID local, puis PAT privé,
 SHA et consentement Google du nouveau projet. Usage courant : un SHA à changer,
 trois exécutions ; sauvegarde et vérification automatiques. Le Cloud REC existant
 est réutilisable si les droits du compte le permettent, sans nouveau compte de
@@ -147,55 +141,47 @@ sur les références publiques et les mocks ; l'installation inconnue reste bloq
 jusqu'à la revue privée décrite dans le guide, sans affaiblir les approbations,
 sauvegardes et restaurations.
 
-## Dernier correctif — diagnostic automatique des différences
+## PR #10 révisée — correctif minimal terminal
 
-Nouvelle fonction diagnostiquerDifferences, utilisable avant enrôlement après
-mise à jour manuelle de Maintenance et ajout du fichier public Acorn.gs dans le
-même projet. Aucun nouveau projet, configuration Cloud, permission ou déploiement.
-Ni cette mise à jour Google ni le diagnostic réel n'ont été effectués ici.
+La PR #9 est fusionnée. La PR #10 existante est réduite à ce correctif :
+diagnostiquerDifferences, Acorn.gs et sa licence sont retirés. Aucune dépendance,
+nouveau fichier ou permission. Seuls Maintenance.gs, son README, les tests et ce
+compte rendu diffèrent de main. Aucun changement du synchroniseur ou du backend.
 
-Deux GET vers la cible unique, deux GET de blobs publics GitHub figés, sans corps.
-Les références sont vérifiées par taille, SHA-1 Git et SHA-256 existants. Le code
-Google n'est envoyé à aucun autre service ; seuls les jetons respectifs, en mémoire,
-authentifient les requêtes vers leur service d'origine. Aucun Drive/Sheets/backend.
-Aucune écriture, même temporaire, dans les propriétés, plans ou approbations.
+L'empreinte brute de chaque référence publique a été recalculée via le véritable
+maintBinding_, avec deux valeurs privées fictives, et correspond aux empreintes
+approuvées inchangées. Les deux références finissent par une accolade puis LF.
+La reconnaissance initiale accepte en plus le même texte après remplacement de
+la seule zone terminale SP ASCII/TAB/CR/LF par un unique LF. Aucune modification
+du texte intérieur, aucune normalisation Unicode ou syntaxique. Les contrôles de
+fichiers, manifeste, enveloppe, identité et destination sont exécutés avant cette
+comparaison, comme auparavant. Les deux empreintes autorisées sont inchangées.
 
-Le diagnostic vérifie Code/Synchroniseur et le manifeste complet ; une divergence
-JSON est signalée sans donner son contenu. Acorn analyse le code sans l'exécuter ;
-seuls les deux littéraux du véritable bloc REC_DESTINATION sont neutralisés, après
-contrôle de sa forme et de l'identité privée. La comparaison textuelle et celle des
-arbres normalisés sont distinctes. Positions et graphie des littéraux ordinaires
-sont ignorées dans l'arbre ; directives, regex, valeurs et templates bruts restent
-significatifs. Les commentaires sont comparés séparément, avec fins de ligne
-uniformisées pour ce seul classement. Aucune conclusion d'équivalence fonctionnelle.
+Le diagnostic ajoute normalisationTerminaleNecessaire : vrai seulement si le
+texte exact est inconnu et la variante terminale est reconnue. Inconnu après
+normalisation reste inconnu. Le diagnostic n'écrit aucune propriété Google ni
+source distante ; initialiserMaintenance ne change que son ENROLLMENT comme avant.
+Les sources sauvegardées, plans, empreintes opérationnelles et restaurations
+restent exacts ; la normalisation ne se propage à aucun chemin de synchronisation.
 
-Résumé limité à états publics, booléens, nombres de lignes/fonctions et référence
-publique Mission 7/9. Aucun extrait, nom de fonction privée, empreinte privée,
-identifiant, jeton ou erreur brute. Analyse impossible (syntaxique, limite ou
-syntaxe hors ECMAScript 2022) et analyseur absent sont explicitement distingués.
-L'enrôlement strict, ses empreintes, les approbations, sauvegardes, contrôles de
-suppression, restauration et chemins de synchronisation sont inchangés.
+29 tests supplémentaires (135 au total) couvrent Mission 7/9, Code.gs exact,
+absence de LF, LF supplémentaires, CRLF/CR finaux, espaces/tabulations et zone
+mixte. Chaque cas reconnu vérifie le diagnostic sans mutation, l'enrôlement,
+la préservation des valeurs privées puis, si nécessaire, synchronisation et
+restauration exactes de la variante sauvegardée. Cas négatifs : commentaire final,
+commentaire suivi de blancs, fonction supplémentaire, condition modifiée, espaces,
+lignes vides/commentaires intérieurs, NBSP, espace Unicode, séparateur Unicode,
+BOM final/initial, zéro largeur et CRLF intérieurs. Les tests vérifient aussi les
+empreintes réelles des références et l'absence du diagnostic complexe.
 
-41 scénarios supplémentaires (147 au total) couvrent références exactes Mission 7/9
-et Code.gs, indentation/CRLF, fins de ligne seules, lignes vides, commentaires ajoutés/retirés, graphie de
-chaîne, bloc privé reformatté, condition/constante modifiées, fonction ajoutée,
-code global jamais exécuté, regex, ASI après return, templates bruts, directives,
-BigInt, syntaxe invalide, manifeste divergent/malformé/reformaté, propriétés et
-plans existants intacts, identités/noms/configurations interdits, erreurs et
-corruptions GitHub, références non approuvées, analyseur absent, PAT absent et
-neutralisation strictement limitée au bloc. Le transport mock refuse toute requête
-avec corps ou méthode autre que GET et toute route hors des quatre prévues pour ce
-diagnostic. Les tests vérifient zéro tentative d'écriture de propriété, même avec
-la même valeur, et désactivent eval/Function par génération de chaîne dans la VM.
+Validation réellement réexécutée : 135 scénarios Maintenance, 46 synchroniseur,
+84 backend ; isolation, préparation REC, syntaxe des 16 sources et contrôles de
+diff. Aucun npm, aucune opération Google réelle, aucun déploiement ni fusion.
+Le diagnostic de l'installation réelle reste à faire par le propriétaire :
+une fin de fichier différente est une hypothèse reproduite, pas une certitude.
 
-Acorn 8.15.0 (~242 ko) est embarqué pour éviter un faux analyseur par regex. Son
-paquet npm a été téléchargé uniquement pour la préparation locale et vérifié par
-l'intégrité SHA-512 publiée avant extraction ; aucune installation npm nécessaire
-aux tests ou à Google. Le corps du module distribué est inchangé, seul l'emballage
-UMD est remplacé pour isoler MAINT_ACORN. Licence complète incluse dans le fichier
-Google et dans Acorn-LICENSE.txt. Aucun téléchargement d'analyseur à l'exécution.
-La dépendance représente l'essentiel des lignes ajoutées et doit être revue.
-
-Tous les contrôles de la section validation locale ont été réexécutés pour ce
-correctif. Le guide contient la procédure de mise à jour en trois étapes et les
-limites : un arbre identique ne débloque pas automatiquement l'installation.
+Procédure : une seule mise à jour de Maintenance.gs dans le projet existant,
+en conservant MAINT_DESTINATION. Aucun Acorn, nouveau projet ou réglage Cloud,
+aucun changement de REC-Synchronisation, propriétés, manifeste, données ou
+permissions. Après enregistrement : diagnostiquerInstallation puis, si reconnu,
+initialiserMaintenance. Attendre l'accord du propriétaire avant fusion.

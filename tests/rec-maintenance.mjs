@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
 const source = readFileSync(new URL('../apps-script/rec-maintenance/Maintenance.gs', import.meta.url), 'utf8');
-const parserSource = readFileSync(new URL('../apps-script/rec-maintenance/Acorn.gs', import.meta.url), 'utf8');
 const syncSource = readFileSync(new URL('../apps-script/rec-synchronisation/Synchroniseur.gs', import.meta.url), 'utf8');
 const historical = readFileSync(new URL('../fixtures/rec/mission-7-synchroniseur.gs', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../apps-script/rec-synchronisation/appsscript.json', import.meta.url)));
@@ -22,9 +21,9 @@ const makeFiles = text => [{ name: 'Synchroniseur', type: 'SERVER_JS', source: t
 const old = makeFiles(personalize(historical));
 const violations = [];
 let count = 0;
-function setup(personalized = true, initialized = true, withParser = true) {
+function setup(personalized = true, initialized = true) {
   const properties = new Map([['GITHUB_READ_TOKEN', 'SECRET_FICTIF_NE_PAS_JOURNALISER'], ['CANDIDATE_SHA', sha]]);
-  const calls = [], logs = [], drive = new Map(), propertyWrites = [];
+  const calls = [], logs = [], drive = new Map();
   const state = { files: copy(old), title: 'REC-Synchronisation', email, candidate: makeFiles(syncSource),
     treeExtra: null, truncated: false, backupFailure: false, corruptBackup: false,
     corruptBlob: false, writeFailure: false, wrongReadback: false, held: false, now: 1000000, puts: 0 };
@@ -33,13 +32,6 @@ function setup(personalized = true, initialized = true, withParser = true) {
   const response = (value, code = 200) => ({ getResponseCode: () => code, getContentText: () => JSON.stringify(value) });
   function mockFetch(url, options) {
     calls.push({ url, method: options.method });
-    if (state.diagnosticOnly) {
-      assert.equal(options.method, 'get'); assert.equal(options.payload, undefined);
-      assert(!url.includes(backendId)); assert(!url.includes(email));
-      assert(url.startsWith('https://script.googleapis.com/v1/projects/' + id) ||
-        ['03d9f37a52e8a635cf237352e8ae3930d7ce7e0a', '13c4498003e0c2dca38b9ec671d93c303be430a4'].some(
-          blob => url === 'https://api.github.com/repos/ATALEBappli/suivi-depot-app/git/blobs/' + blob));
-    }
     assert.equal(options.followRedirects, false);
     if (url.startsWith('https://api.github.com/repos/ATALEBappli/suivi-depot-app/git/')) {
       assert.equal(options.method, 'get');
@@ -60,11 +52,7 @@ function setup(personalized = true, initialized = true, withParser = true) {
         if (state.treeExtra) tree.push(state.treeExtra);
         return response({ sha: treeSha, truncated: state.truncated, tree });
       }
-      const requested = url.split('/').at(-1);
-      const reference = { '03d9f37a52e8a635cf237352e8ae3930d7ce7e0a': historical,
-        '13c4498003e0c2dca38b9ec671d93c303be430a4': syncSource }[requested];
-      const blob = reference && state.diagnosticOnly ? { sha: requested, encoding: 'base64',
-        size: Buffer.byteLength(reference), content: Buffer.from(reference).toString('base64') } : copy(blobMap.get(requested));
+      const blob = copy(blobMap.get(url.split('/').at(-1)));
       if (state.badSize) blob.size++;
       if (state.badEncoding) blob.encoding = 'utf8';
       if (state.redirect) return response({}, 302);
@@ -109,8 +97,7 @@ function setup(personalized = true, initialized = true, withParser = true) {
   const context = vm.createContext({
     console: { log: text => logs.push(text) }, Date: class extends Date { static now() { return state.now; } },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => properties.get(k) ?? null,
-      setProperty: (k, v) => { propertyWrites.push(k); return properties.set(k, v); },
-      deleteProperty: k => { propertyWrites.push(k); return properties.delete(k); } }) },
+      setProperty: (k, v) => properties.set(k, v), deleteProperty: k => properties.delete(k) }) },
     Session: { getEffectiveUser: () => ({ getEmail: () => state.email }) },
     ScriptApp: { getScriptId: () => state.selfId || maintenanceId, getOAuthToken: () => 'GOOGLE_FICTIF' },
     LockService: { getScriptLock: () => ({ tryLock: () => !state.held, releaseLock() {} }) },
@@ -126,8 +113,7 @@ function setup(personalized = true, initialized = true, withParser = true) {
       computeDigest: (alg, value) => [...hex(alg, typeof value === 'string' ? value : Buffer.from(value))],
       newBlob: value => ({ getBytes: () => [...Buffer.from(value)], getDataAsString: () => Buffer.from(value).toString('utf8') })
     }
-  }, { codeGeneration: { strings: false, wasm: false } });
-  if (withParser) vm.runInContext(parserSource, context);
+  });
   vm.runInContext(personalized ? source.replace("scriptId: 'A_PERSONNALISER_HORS_GIT'", `scriptId: '${id}'`)
     : source, context);
   const call = name => copy(context[name]());
@@ -137,7 +123,7 @@ function setup(personalized = true, initialized = true, withParser = true) {
     assert.equal(call('initialiserMaintenance').etat, 'LIAISON_EXISTANTE_VERROUILLEE');
     calls.length = 0;
   }
-  return { context, state, properties, calls, logs, drive, call, approve, propertyWrites };
+  return { context, state, properties, calls, logs, drive, call, approve };
 }
 function test(name, fn) { fn(); assert.deepEqual(violations, []); count++; console.log('OK ' + name); }
 const refused = (x, operation = 'simulerSynchronisation') => {
@@ -460,7 +446,7 @@ test('Diagnostic inconnu : résumé précis et propriétés existantes inchangé
   const x = setup(); x.approve(); x.state.files[0].source += '\nfunction diagnosticDrive() {}';
   const before = copy([...x.properties]); x.calls.length = 0;
   assert.deepEqual(x.call('diagnostiquerInstallation'), { etat: 'REVUE_PRIVEE_REQUISE',
-    nomHistoriqueCode: false, sourceCompleteConnue: false });
+    nomHistoriqueCode: false, sourceCompleteConnue: false, normalisationTerminaleNecessaire: false });
   assert.deepEqual([...x.properties], before); assert.equal(x.calls.length, 2);
   assert(x.calls.every(c => c.method === 'get')); assert.equal(x.drive.size, 0);
 });
@@ -470,142 +456,70 @@ test('Ancien enrôlement sans codeName : compatibilité limitée à Synchroniseu
   assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
   x.state.files[0].name = 'Code'; assert.equal(x.call('verifierConfiguration').etat, 'REFUSE');
 });
-// Diagnostic détaillé : transport strictement GET et zéro tentative de mutation.
-function diagnostic(x) {
-  x.state.diagnosticOnly = true; x.calls.length = 0; x.propertyWrites.length = 0;
-  const before = copy([...x.properties]), files = copy(x.state.files);
-  const result = x.call('diagnostiquerDifferences');
-  assert.deepEqual([...x.properties], before); assert.deepEqual(x.state.files, files);
-  assert.deepEqual(x.propertyWrites, []); assert.equal(x.state.puts, 0); assert.equal(x.drive.size, 0);
-  assert(x.calls.every(c => c.method === 'get'));
-  const output = JSON.stringify([result, x.logs]);
-  for (const privateValue of [id, backendId, email, maintenanceId, 'GOOGLE_FICTIF',
-    'SECRET_FICTIF_NE_PAS_JOURNALISER', 'DIAGNOSTIC_PRIVE_FICTIF', 'fonctionPriveeFictive']) assert(!output.includes(privateValue));
-  return result;
-}
-for (const [label, version, index] of [['Mission 7', historical, 0], ['Mission 9', syncSource, 1]]) {
-  test('Diagnostic références immuables et Code.gs exact : ' + label, () => {
-    const x = setup(true, false); x.state.files = makeFiles(personalize(version)); x.state.files[0].name = 'Code';
-    const result = diagnostic(x);
-    assert.equal(result.etat, 'DIAGNOSTIC_LECTURE_SEULE'); assert.equal(result.nomHistoriqueCode, true);
-    assert.equal(result.manifesteConforme, true); assert.equal(result.syntaxe, 'VALIDE_ECMASCRIPT_2022');
-    assert.equal(result.comparaisons.length, 2); assert.equal(x.calls.length, 4);
-    assert.equal(result.comparaisons[index].texteIdentique, true);
-    assert.equal(result.comparaisons[index].arbreSyntaxiqueIdentique, true);
-    assert.equal(result.comparaisons[index].premiereLigneDifferente, null);
-    assert(!x.properties.has('ENROLLMENT'));
+// Variantes terminales : seules SP ASCII, TAB, CR et LF, après le code exact.
+for (const [versionName, version] of [['Mission 7', historical], ['Mission 9', syncSource]]) {
+  for (const [variant, suffix, required] of [
+    ['exact', '\n', false], ['sans LF', '', true], ['LF supplémentaires', '\n\n\n', true],
+    ['CRLF final', '\r\n', true], ['CR final', '\r', true], ['espaces et tabulations', ' \t ', true],
+    ['zone mixte', '\r\n \t\n\r \n', true]
+  ]) test('Reconnaissance terminale ' + versionName + ' : ' + variant, () => {
+    const x = setup(true, false);
+    x.state.files = makeFiles(personalize(version).replace(/[ \t\r\n]*$/, '') + suffix);
+    x.state.files[0].name = 'Code';
+    const original = copy(x.state.files), properties = copy([...x.properties]);
+    const result = x.call('diagnostiquerInstallation');
+    assert.deepEqual(result, { etat: 'SOURCE_INITIALE_RECONNUE', nomHistoriqueCode: true,
+      sourceCompleteConnue: true, normalisationTerminaleNecessaire: required });
+    assert.deepEqual([...x.properties], properties); assert.deepEqual(x.state.files, original);
+    assert.equal(x.drive.size, 0); assert(x.calls.every(c => c.method === 'get'));
+    assert.equal(x.call('initialiserMaintenance').etat, 'LIAISON_EXISTANTE_VERROUILLEE');
+    assert.deepEqual(x.state.files, original); assert.deepEqual(JSON.parse(x.properties.get('ENROLLMENT')).binding,
+      {scriptId: backendId, accountEmail: email});
+    x.approve(); assert.equal(x.call('synchroniserCommitApprouve').etat,
+      version === syncSource && !required ? 'AUCUN_CHANGEMENT' : 'SYNCHRONISATION_VERIFIEE');
+    if (version !== syncSource || required) {
+      assert.deepEqual([...x.drive.values()][0].files, original);
+      x.properties.set('RESTORE_BACKUP_KEY', '1'); x.call('simulerRestauration'); x.call('approuverSimulation');
+      assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'RESTAURATION_VERIFIEE');
+      assert.deepEqual(x.state.files, original);
+    }
+    const output = JSON.stringify([result, x.logs]);
+    for (const value of [id, backendId, email, maintenanceId, 'GOOGLE_FICTIF', 'SECRET_FICTIF_NE_PAS_JOURNALISER']) assert(!output.includes(value));
   });
 }
-for (const [label, change, conclusion] of [
-  ['indentation et CRLF', s => s.replace(/\n/g, '\r\n').replace(/  /g, '    '), 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX'],
-  ['lignes vides', s => s + '\n\n', 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX'],
-  ['commentaire ajouté', s => s + '\n// DIAGNOSTIC_PRIVE_FICTIF', 'COMMENTAIRES_ET_EVENTUELLEMENT_FORMATAGE'],
-  ['commentaire retiré', s => s.slice(s.indexOf('const REC_DESTINATION')), 'COMMENTAIRES_ET_EVENTUELLEMENT_FORMATAGE'],
-  ['commentaire et indentation', s => s.replace(/  /g, '    ') + '\n/* DIAGNOSTIC_PRIVE_FICTIF */', 'COMMENTAIRES_ET_EVENTUELLEMENT_FORMATAGE'],
-  ['graphie équivalente de chaîne', s => s.replace("'SuiviDepotAPI-REC'", '"SuiviDepotAPI-REC"'), 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX'],
-  ['bloc privé reformatté', s => s.replace('Object.freeze({\n  scriptId:', 'Object.freeze( { scriptId:').replace('\n  accountEmail:', ' accountEmail:'), 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX']
-]) test('Diagnostic arbre identique : ' + label, () => {
-  const x = setup(true, false); x.state.files[0].source = change(personalize(historical));
-  const r = diagnostic(x).comparaisons[0];
-  assert.equal(r.texteIdentique, false); assert.equal(r.arbreSyntaxiqueIdentique, true);
-  assert.equal(r.conclusion, conclusion); assert(r.premiereLigneDifferente > 0);
-  assert.equal(x.call('initialiserMaintenance').etat, 'REFUSE'); assert(!x.properties.has('ENROLLMENT'));
-});
 for (const [label, change] of [
-  ['condition', s => s.replace('if (plan.before === plan.after)', 'if (plan.before !== plan.after)')],
-  ['constante publique', s => s.replace('SuiviDepotAPI-REC', 'DIAGNOSTIC_PRIVE_FICTIF')],
-  ['fonction supplémentaire', s => s + '\nfunction fonctionPriveeFictive() { return "DIAGNOSTIC_PRIVE_FICTIF"; }'],
-  ['code global jamais exécuté', s => s + '\nthrow new Error("DIAGNOSTIC_PRIVE_FICTIF");'],
-  ['regex', s => s.replace('[a-f0-9]{40}', '[a-f0-9]{39}')]
-]) test('Diagnostic structure modifiée : ' + label, () => {
-  const x = setup(true, false); const changed = change(personalize(historical));
-  assert.notEqual(changed, personalize(historical)); x.state.files[0].source = changed;
-  const r = diagnostic(x).comparaisons[0]; assert.equal(r.arbreSyntaxiqueIdentique, false);
-  assert.equal(r.conclusion, 'STRUCTURE_MODIFIEE_REVUE_REQUISE');
-  assert.equal(r.ecartNombreFonctionsGlobales, label === 'fonction supplémentaire' ? 1 : 0);
+  ['commentaire final', s => s + '// ajout fictif\n'],
+  ['commentaire final puis blancs', s => s + '/* ajout */ \t\n'],
+  ['fonction ajoutée', s => s + 'function diagnosticFictif() {}\n'],
+  ['condition modifiée', s => s.replace('if (plan.before === plan.after)', 'if (plan.before !== plan.after)')],
+  ['espacement intérieur', s => s.replace('const plan = recPlan_();', 'const plan  = recPlan_();')],
+  ['ligne vide intérieure', s => s.replace('function recProps_', '\nfunction recProps_')],
+  ['commentaire intérieur', s => s.replace('function recProps_', '// ajout\nfunction recProps_')],
+  ['NBSP final', s => s + '\u00a0'], ['espace Unicode final', s => s + '\u2003'],
+  ['séparateur Unicode final', s => s + '\u2028'], ['BOM final', s => s + '\ufeff'],
+  ['zéro largeur final', s => s + '\u200b'],
+  ['CRLF partout', s => s.replace(/\n/g, '\r\n')], ['BOM initial', s => '\ufeff' + s]
+]) test('Normalisation terminale refuse : ' + label, () => {
+  const x = setup(true, false), original = personalize(historical), changed = change(original);
+  assert.notEqual(changed, original); x.state.files[0].name = 'Code'; x.state.files[0].source = changed;
+  const result = x.call('diagnostiquerInstallation');
+  assert(['REFUSE', 'REVUE_PRIVEE_REQUISE'].includes(result.etat));
+  if (result.etat !== 'REFUSE') {
+    assert.equal(result.sourceCompleteConnue, false); assert.equal(result.normalisationTerminaleNecessaire, false);
+  }
+  refused(x, 'initialiserMaintenance'); assert(!x.properties.has('ENROLLMENT'));
+  assert.equal(x.drive.size, 0); assert(x.calls.every(c => c.method === 'get'));
 });
-test('Analyse AST conserve ASI, chaînes, regex, templates, directives et littéraux', () => {
-  const x = setup();
-  for (const [a, b] of [
-    ['function f(){return 1}', 'function f(){return\n1}'],
-    ['const x="a b";', 'const x="ab";'],
-    ['const x=/a b/g;', 'const x=/ab/g;'],
-    ['const x=`a ${1}`;', 'const x=`a ${2}`;'],
-    ['"use strict";', '"use asm";'],
-    ['const x=1n;', 'const x=2n;'],
-    ['String.raw`a\\n`;', 'String.raw`a\\x0a`;']
-  ]) assert.equal(x.context.maintDiagCompare_(a, b).arbreSyntaxiqueIdentique, false);
-});
-test('Erreur syntaxique : résumé fixe sans message ni source privée', () => {
-  const x = setup(true, false); x.state.files[0].source += '\nfunction DIAGNOSTIC_PRIVE_FICTIF( {';
-  const r = diagnostic(x); assert.equal(r.syntaxe, 'ANALYSE_IMPOSSIBLE'); assert.deepEqual(r.comparaisons, []);
-  assert.equal(x.calls.length, 2);
-});
-for (const change of [m => { m.oauthScopes.push('PORTEE_FICTIVE'); }, m => { m.dependencies = { libraries: [] }; }]) {
-  test('Diagnostic manifeste divergent signalé, jamais accepté', () => {
-    const x = setup(true, false), m = copy(manifest); change(m); x.state.files[1].source = JSON.stringify(m);
-    const r = diagnostic(x); assert.equal(r.manifesteConforme, false); assert.equal(r.comparaisons[0].texteIdentique, true);
-    assert.equal(x.call('initialiserMaintenance').etat, 'REFUSE'); assert(!x.properties.has('ENROLLMENT'));
-  });
-}
-test('Diagnostic manifeste JSON malformé signalé sans retour brut', () => {
-  const x = setup(true, false); x.state.files[1].source = '{DIAGNOSTIC_PRIVE_FICTIF';
-  assert.equal(diagnostic(x).manifesteConforme, false);
-});
-test('Diagnostic préserve plans, approbation et enrôlement existants', () => {
-  const x = setup(); x.approve(); x.properties.set('IN_FLIGHT', 'FICTIF');
-  assert.equal(diagnostic(x).comparaisons[0].texteIdentique, true);
-});
-for (const [label, change] of [
-  ['compte différent', x => { x.state.email = 'autre@example.invalid'; }],
-  ['auto-ciblage backend', x => { x.state.files[0].source = personalize(historical).replace(backendId, id); }],
-  ['titre incorrect', x => { x.state.title = 'AUTRE'; }],
-  ['mauvaise cible', x => { x.state.wrongId = true; }],
-  ['projet lié', x => { x.state.bound = true; }],
-  ['nom inconnu', x => { x.state.files[0].name = 'DIAGNOSTIC_PRIVE_FICTIF'; }],
-  ['deux scripts', x => { x.state.files.push({ ...x.state.files[0], name: 'Code' }); }],
-  ['configuration ambiguë', x => { x.state.files[0].source += '\n{ const REC_DESTINATION = {}; }'; }],
-  ['configuration calculée', x => { x.state.files[0].source = personalize(historical).replace("scriptId: '", "['scriptId']: '"); }],
-  ['configuration supplémentaire', x => { x.state.files[0].source = personalize(historical).replace("accountEmail:", "extra: 1, accountEmail:"); }],
-  ['GitHub indisponible', x => { x.state.githubFailure = true; }],
-  ['blob altéré', x => { x.state.corruptBlob = true; }],
-  ['blob mal dimensionné', x => { x.state.badSize = true; }],
-  ['blob mauvais encodage', x => { x.state.badEncoding = true; }],
-  ['redirection GitHub', x => { x.state.redirect = true; }]
-]) test('Diagnostic refus fermé : ' + label, () => {
-  const x = setup(true, false); change(x); assert.equal(diagnostic(x).etat, 'REFUSE');
-});
-test('Références locales liées aux deux empreintes autorisées inchangées', () => {
+test('Empreintes approuvées vérifiées sur fixtures et absence de diagnostic complexe', () => {
   const x = setup();
   assert.deepEqual(copy(vm.runInContext('MAINT_KNOWN_SOURCES', x.context)), [
     '2ae711f40846d00eb88d969381b0bc5253f3ad92320f5d02001c3b9d96c21b8d',
     '93765033560978a8b6f8b63736fc3e19fdca9a4a948aeb1f16e5373812cdebea']);
-  x.state.diagnosticOnly = true;
-  assert.throws(() => x.context.maintDiagReference_({ mission: 'FICTIF',
-    blob: '03d9f37a52e8a635cf237352e8ae3930d7ce7e0a', hash: '0'.repeat(64) }));
-});
-test('Analyseur non installé : état explicite, aucune fausse conclusion de syntaxe', () => {
-  const x = setup(true, false, false), result = diagnostic(x);
-  assert.equal(result.syntaxe, 'ANALYSEUR_ABSENT'); assert.deepEqual(result.comparaisons, []);
-  assert.equal(x.calls.length, 2);
-});
-test('Diagnostic sans PAT : refus sans mutation ni requête GitHub', () => {
-  const x = setup(true, false); x.properties.delete('GITHUB_READ_TOKEN');
-  assert.equal(diagnostic(x).etat, 'REFUSE'); assert.equal(x.calls.length, 2);
-});
-test('Diagnostic manifeste ordre/indentation acceptés', () => {
-  const x = setup(true, false);
-  x.state.files[1].source = JSON.stringify(Object.fromEntries(Object.entries(manifest).reverse()), null, 4);
-  assert.equal(diagnostic(x).manifesteConforme, true);
-});
-test('Neutralisation limitée aux deux valeurs du bloc : autre occurrence privée reste un écart', () => {
-  const x = setup(true, false); x.state.files[0].source += `\nconst fonctionPriveeFictive = '${backendId}';`;
-  assert.equal(diagnostic(x).comparaisons[0].arbreSyntaxiqueIdentique, false);
-});
-test('Fins de ligne seules : zone et première ligne différentes exactes', () => {
-  const x = setup(true, false); x.state.files[0].source = personalize(historical).replace(/\n/g, '\r\n');
-  const result = diagnostic(x).comparaisons[0];
-  assert.equal(result.conclusion, 'FORMATAGE_OU_GRAPHIE_DES_LITTERAUX');
-  assert.equal(result.premiereLigneDifferente, 1); assert(result.lignesDansZoneDifferenteInstallee > 0);
+  for (const [i, text] of [historical, syncSource].entries()) {
+    const hash = createHash('sha256').update(x.context.maintBinding_(personalize(text)).normalized, 'utf8').digest('hex');
+    assert.equal(hash, vm.runInContext('MAINT_KNOWN_SOURCES', x.context)[i]);
+  }
+  assert.equal(typeof x.context.diagnostiquerDifferences, 'undefined');
+  assert(!source.includes('MAINT_ACORN'));
 });
 console.log(`${count} scénarios REC-Maintenance hors réseau réussis.`);

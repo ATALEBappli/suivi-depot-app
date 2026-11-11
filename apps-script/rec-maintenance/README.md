@@ -32,8 +32,8 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
 2. Vérifier les fichiers existants : exactement un script `Synchroniseur` ou le nom historique `Code`
    (affichés avec `.gs`) et `appsscript` (JSON). La version initiale doit être
    exactement celle de Mission 7 ou Mission 9, avec uniquement les deux valeurs
-   privées remplacées. Les ajouts de diagnostics et toute autre édition ou formatage initial sont
-   bloquants : arrêter et faire revoir la différence, sans désactiver le contrôle.
+   privées remplacées. Seuls les espaces ASCII, tabulations et retours CR/LF terminaux peuvent
+   différer ; toute autre édition, notamment les diagnostics, reste bloquante : arrêter et faire revoir la différence, sans désactiver le contrôle.
 3. Créer un nouveau projet Apps Script autonome nommé **REC-Maintenance**, privé,
    sans autre éditeur. Copier **une seule fois** le fichier `Maintenance.gs` revu
    depuis GitHub Raw/Copy ; renommer le fichier initial `Maintenance` et y coller
@@ -41,8 +41,6 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
    `MAINT_DESTINATION.scriptId`, au début, par le Script ID de REC-Synchronisation.
    **Ne pas remplacer les marqueurs présents dans les chaînes MAINT_TEMPLATE et
    MAINT_PROTECTED** : ils décrivent le contrat public, ce ne sont pas vos réglages.
-   Ajouter également un fichier script `Acorn` et y coller le contenu public de
-   `Acorn.gs` du même commit revu : analyseur local requis pour le diagnostic détaillé.
 4. Dans Paramètres du projet, afficher le manifeste `appsscript.json`, puis
    coller une fois le manifeste de **ce répertoire**. Aucun déploiement.
    Rattacher ce nouveau projet au **Google Cloud REC standard déjà configuré**,
@@ -75,7 +73,7 @@ varier avec Google ; ce parcours n'a pas encore été testé sur un iPhone réel
    ne vaut pas autorisation de mise à jour réelle. Ajouter le projet aux favoris
    Safari ou un raccourci sur l'écran d'accueil.
 
-Le collage initial des trois fichiers Google (Maintenance, Acorn, manifeste) et le seul ID privé sont nécessaires avec
+Le collage initial des deux fichiers et le seul ID privé sont nécessaires avec
 les accès actuels. Aucun installateur OAuth externe n'est fourni. Les versions
 futures du synchroniseur n'exigeront pas de nouveau collage tant que leur contrat
 reste compatible avec ce noyau. Une évolution de Maintenance elle-même, de ses
@@ -95,6 +93,9 @@ La reconnaissance porte sur **tout le texte**, après remplacement du seul bloc
 REC_DESTINATION strictement parsé par le bloc public à marqueurs. L'empreinte
 SHA-256 doit appartenir aux deux références Mission 7/9 déjà approuvées ; aucune
 nouvelle empreinte privée ni liste de noms de fonctions n'est acceptée.
+Pour la reconnaissance initiale uniquement, les caractères terminaux SP ASCII,
+TAB, CR et LF sont ramenés à un unique LF avant comparaison aux mêmes empreintes.
+Aucun espace intérieur, commentaire ou caractère Unicode n'est neutralisé.
 Le manifeste, l'enveloppe, le compte effectif, les identités distinctes et les
 métadonnées du projet restent contrôlés. L'installation avec diagnostics manuels
 n'est donc pas déclarée compatible sans revue de leur contenu réel.
@@ -102,14 +103,13 @@ n'est donc pas déclarée compatible sans revue de leur contenu réel.
 Après autorisation distincte d'installation, `diagnostiquerInstallation` ne lit
 que les métadonnées et les sources de la cible. Aucun accès GitHub, Drive, backend,
 aucune écriture de propriété, aucun plan ou approbation créé/effacé. Il retourne
-uniquement un état et deux booléens ; aucun identifiant, empreinte privée, nom de
+uniquement un état et trois booléens ; aucun identifiant, empreinte privée, nom de
 fonction, source ou erreur brute. `REVUE_PRIVEE_REQUISE` signifie que la structure,
 le manifeste, la liaison et l'enveloppe passent, mais que le texte complet est
 inconnu (diagnostics inclus). `REFUSE` signifie qu'un contrôle préalable échoue ;
 ce diagnostic ne cherche pas à deviner un format ou une identité.
 
-Privilégier le diagnostic automatique ci-dessous. Si une revue plus détaillée reste
-nécessaire, procédure privée de secours (aucune transmission des sources) :
+Procédure de revue **à préparer maintenant, à effectuer ultérieurement en privé** :
 
 1. Arrêter les éditions/exécutions concurrentes du synchroniseur. Vérifier les
    identités dans Google en privé. Ne jamais transmettre les sources Google dans
@@ -142,105 +142,52 @@ nécessaire, procédure privée de secours (aucune transmission des sources) :
    automatique reste obligatoire avant tout PUT ultérieurement autorisé ; elle ne
    remplace pas la copie privée préalable à une éventuelle intervention manuelle.
 
-Aucun diagnostic de l'installation réelle n'a été exécuté par cette mission : la compatibilité
+Aucun diagnostic de l'installation réelle n'a été exécuté : la compatibilité
 Mission 7 → Mission 9 est vérifiée sur mocks pour `Code.gs` exact et les refus des
 ajouts manuels. La réussite passée d'une synchronisation ne prouve pas l'identité
 du texte installé aujourd'hui.
 
-## Diagnostic automatique des différences — Safari iPhone
+## Correctif minimal de fin de fichier — projet déjà installé
 
-`diagnostiquerDifferences` est une **nouvelle fonction**, distincte du diagnostic
-initial et de l'enrôlement. Elle n'existe dans Google qu'après la mise à jour
-manuelle autorisée de Maintenance décrite ci-dessous. Elle fonctionne avant
-initialisation et ne nécessite aucun changement de CANDIDATE_SHA.
+La fixture Mission 7 et la référence Mission 9 se terminent par un unique LF.
+Un LF absent, supplémentaire, un CRLF final ou des blancs ASCII terminaux
+suffisaient à produire une empreinte inconnue. C'est une cause possible et
+reproduite sur mocks, pas une observation des sources Google réelles.
 
-Elle lit seulement les métadonnées et le contenu de REC-Synchronisation, puis les
-deux blobs publics GitHub immuables Mission 7/9, avec le PAT de lecture existant.
-Aucun envoi des sources Google à GitHub : quatre GET sans corps au maximum, deux
-vers Google et deux vers GitHub. Aucun appel Drive, Sheets, backend, déploiement,
-aucun PUT ; aucune propriété, aucun plan ou approbation créé, effacé ou modifié.
-Les sources, arbres syntaxiques et commentaires restent en mémoire de l'exécution.
+Le correctif conserve d'abord le résultat de la comparaison exacte. Pour la
+reconnaissance initiale seulement, il retire exclusivement la suite finale des
+caractères espace ASCII (U+0020), tabulation (U+0009), CR (U+000D) et LF (U+000A),
+puis ajoute un LF. Le SHA-256 doit encore appartenir aux **mêmes deux empreintes**.
+Les références exactes terminent par une accolade puis LF : tout le texte avant
+cette zone reste donc identique. Ni trim, ni normalisation Unicode, ni suppression
+de commentaires ou d'espaces intérieurs, ni analyseur syntaxique ne sont employés.
 
-Les références sont ancrées aux blobs Git et aux deux SHA-256 déjà autorisés :
+`diagnostiquerInstallation` ajoute `normalisationTerminaleNecessaire` :
 
-| Référence | Blob Git public |
-| --- | --- |
-| Mission 7, fixture historique | `03d9f37a52e8a635cf237352e8ae3930d7ce7e0a` |
-| Mission 9, Synchroniseur.gs | `13c4498003e0c2dca38b9ec671d93c303be430a4` |
+- `true` : texte exact inconnu, mais référence reconnue après ce seul ajustement final.
+- `false` : texte déjà exact, ou source toujours inconnue (voir les autres champs).
 
-Les octets reçus sont vérifiés par taille, SHA-1 Git blob puis SHA-256 des sources
-publiques non personnalisées. Ni branche mobile ni SHA utilisateur ne sélectionne
-ces références. Le manifeste installé est comparé à MAINT_MANIFEST, référence
-fermée déjà approuvée pour ces versions ; ordre/indentation JSON sont sans effet.
-Le nom API doit être Code ou Synchroniseur, avec un seul script et ce seul manifeste.
+Cette inspection ne modifie aucune source Google, propriété, plan ou approbation.
+`initialiserMaintenance` utilise la même reconnaissance après tous les contrôles
+existants. Les sauvegardes, plans et restaurations continuent à utiliser le texte
+réel exact : aucun fichier n'est réécrit ou normalisé par ce correctif. La
+synchronisation conserve ses contrôles avant/après et sa sauvegarde obligatoire.
+Les commentaires supplémentaires, modifications fonctionnelles, blancs intérieurs,
+BOM et espaces Unicode restent inconnus ou refusés. Une source non reconnue reste
+bloquée, sans procédure d'acceptation automatique.
 
-L'analyseur local Acorn lit du JavaScript ECMAScript 2022, sans exécuter les sources.
-Il repère la déclaration réelle REC_DESTINATION et neutralise uniquement les deux
-littéraux de valeurs scriptId/accountEmail. La forme Object.freeze, les deux clés
-uniques, les valeurs privées et le compte effectif sont contrôlés. Cette inspection
-accepte du formatage pour le diagnostic seulement ; elle ne remplace jamais le
-parseur strict, l'enveloppe ou les empreintes de l'initialisation/synchronisation.
+Après revue et accord, dans le **REC-Maintenance existant** :
 
-Lecture du résultat, sans source, nom de fonction, identifiant ou empreinte privée :
+1. Remplacer seulement `Maintenance.gs` par le fichier public du commit approuvé,
+   en conservant votre ligne `MAINT_DESTINATION` personnalisée.
+2. Enregistrer puis lancer `diagnostiquerInstallation`. Si la source est reconnue,
+   lancer `initialiserMaintenance` pour obtenir `LIAISON_EXISTANTE_VERROUILLEE`.
 
-| Résultat | Signification |
-| --- | --- |
-| `manifesteConforme: true` | Manifeste complet conforme à la référence approuvée. |
-| `nomHistoriqueCode: true` | Le script lu s'appelle Code dans l'API Google. |
-| `TEXTE_IDENTIQUE` | Texte identique à cette référence après neutralisation des deux valeurs. |
-| `FORMATAGE_OU_GRAPHIE_DES_LITTERAUX` | Arbre syntaxique identique ; différence de présentation ou de graphie, par exemple guillemets. |
-| `COMMENTAIRES_ET_EVENTUELLEMENT_FORMATAGE` | Arbre identique, commentaires différents ; du formatage peut aussi différer. |
-| `STRUCTURE_MODIFIEE_REVUE_REQUISE` | Arbre différent ; revue requise, sans conclure automatiquement au comportement. |
-| `ANALYSE_IMPOSSIBLE` | Erreur syntaxique, syntaxe hors ECMAScript 2022 ou limite du parseur ; aucune comparaison revendiquée. |
-| `ANALYSEUR_ABSENT` | Le fichier Acorn.gs n'a pas encore été ajouté. |
-| `REFUSE` | Identité, structure, configuration privée ou référence/transport non vérifiable ; aucun contournement. |
-
-Pour chacune des deux références, le résumé inclut égalité du texte et de l'arbre,
-première ligne différente, tailles des zones différentes et écart du nombre de
-fonctions déclarées au niveau global. Ces positions concernent la **copie
-neutralisée** et une zone englobante, pas un diff ligne à ligne. Un écart positif
-de fonctions aide à repérer un ajout ; zéro n'exclut pas un remplacement. Aucun
-extrait ni nom privé n'est affiché. Les erreurs du parseur et réponses HTTP brutes
-ne sont jamais journalisées.
-
-L'égalité d'arbre ignore positions et graphie brute des littéraux ordinaires ;
-elle conserve ordre, directives, valeurs, regex et texte brut des templates.
-Elle distingue notamment un saut de ligne après return qui change le code.
-**Elle ne prouve pas l'équivalence fonctionnelle et n'autorise aucune installation.**
-Même un résultat « formatage » laisse l'empreinte stricte inconnue bloquée tant
-qu'aucune décision explicite n'a été revue. Le diagnostic ne corrige rien.
-
-### Mettre à jour le REC-Maintenance déjà installé
-
-Après revue et autorisation du commit exact, dans le projet **REC-Maintenance
-existant**, depuis Safari :
-
-1. Remplacer le contenu de `Maintenance.gs` par le fichier public revu, en
-   conservant votre ligne `MAINT_DESTINATION` personnalisée. Ne toucher à aucun
-   autre marqueur, ni à REC-Synchronisation.
-2. Ajouter un fichier script `Acorn` et y coller `Acorn.gs` du **même commit**.
-   Aucun nouveau projet, manifeste, réglage Cloud, PAT ou propriété à créer/changer.
-3. Enregistrer, puis exécuter seulement `diagnostiquerDifferences` et lire le résumé.
-   Ne pas lancer initialisation, approbation ou synchronisation pour ce diagnostic.
-
-Deux collages de fichiers **publics** dans Maintenance sont nécessaires ; aucun
-collage de source privée vers un autre service, aucune nouvelle infrastructure.
-Si Google demande de nouveaux droits par rapport au manifeste existant, arrêter :
-ce correctif n'ajoute aucune portée. Aucune de ces étapes Google n'a été exécutée
-par cette mission ; aucun déploiement n'est nécessaire.
-
-### Analyseur embarqué et provenance
-
-Acorn **8.15.0**, licence MIT conservée dans Acorn.gs et Acorn-LICENSE.txt. Source :
-`https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz`, intégrité du paquet vérifiée
-avant extraction :
-`sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==`.
-Le corps de `dist/acorn.js` est inchangé ; seul l'emballage UMD est remplacé par
-une fermeture privée exposant parse dans MAINT_ACORN. Aucun chargement de CDN,
-bibliothèque Apps Script ou npm à l'exécution. La dépendance explique l'essentiel
-du volume du correctif (~242 ko) ; elle nécessite une revue et des mises à jour
-explicites comme le reste de Maintenance. Les tests désactivent la génération de
-code par chaîne dans le contexte VM et ne fournissent aucun transport réel.
+Une seule mise à jour de fichier est nécessaire. Aucun Acorn, autre fichier,
+projet, réglage Cloud, manifeste, propriété ou PAT à ajouter/modifier. Ne rien
+recoller dans REC-Synchronisation. Ne pas lancer de synchronisation réelle à ce
+stade ; la future Mission 9 conserve son cycle d'approbation distinct.
+Aucune opération Google n'a été effectuée pour préparer ce correctif.
 
 ## Chaque mise à jour future : un SHA, trois exécutions
 
