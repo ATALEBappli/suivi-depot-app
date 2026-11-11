@@ -27,7 +27,8 @@ let count = 0;
 function setup(personalized = true) {
   const properties = new Map([['GITHUB_READ_TOKEN', 'SECRET_FICTIF_NE_PAS_JOURNALISER'], ['CANDIDATE_SHA', sha]]);
   const calls = [], logs = [], drive = new Map();
-  const state = { files: copy(old), title: 'SuiviDepotAPI-REC', email, candidate: makeFiles('function nouvelle() {}'),
+  const state = { files: copy(old), title: 'SuiviDepotAPI-REC', email, candidate: makeFiles('function nouvelle() {}').map(f => f.name === 'appsscript' ?
+      { ...f, source: JSON.stringify(candidateManifest) } : f),
     treeExtra: null, truncated: false, backupFailure: false, corruptBackup: false,
     corruptBlob: false, writeFailure: false, wrongReadback: false, held: false, now: 1000000, puts: 0 };
   const blobMap = new Map();
@@ -115,10 +116,63 @@ function test(name, fn) { fn(); count++; console.log('OK ' + name); }
 test('Installation livrée inactive et aucun réseau avant personnalisation', () => {
   const x = setup(false); assert.equal(x.call('verifierConfiguration').etat, 'REFUSE'); assert.equal(x.calls.length, 0);
 });
-test('Manifeste Mission 8 refusé sans PUT par le synchroniseur inchangé', () => {
-  const x = setup(); x.state.candidate[1].source = JSON.stringify(candidateManifest);
+test('Deux manifestes exacts autorisés, ordre et indentation libres', () => {
+  assert.deepEqual(candidateManifest, { ...manifest, webapp: { access: 'MYSELF', executeAs: 'USER_DEPLOYING' } });
+  for (const approved of [manifest, candidateManifest]) {
+    const x = setup();
+    x.state.candidate[1].source = JSON.stringify(Object.fromEntries(Object.entries(approved).reverse()), null, 4);
+    x.approve(); assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
+  }
+});
+test('Sauvegarde et restauration explicites du nouveau manifeste MYSELF', () => {
+  const x = setup(); x.state.files = copy(x.state.candidate);
+  const privateFiles = copy(x.state.files);
+  assert.equal(x.call('sauvegarderSources').etat, 'SAUVEGARDE_RELUE_ET_VERIFIEE');
+  x.state.files = copy(old);
+  assert.equal(x.call('simulerRestauration').etat, 'RESTAURATION_SIMULEE');
+  assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'REFUSE');
+  x.call('approuverSimulation');
+  assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'RESTAURATION_VERIFIEE');
+  assert.deepEqual(x.state.files, privateFiles); assert.equal(x.state.puts, 1);
+  assert.equal(x.drive.size, 2);
+});
+for (const [label, mutate] of [
+  ['accès domaine', m => { m.webapp.access = 'DOMAIN'; }],
+  ['identité exécutante', m => { m.webapp.executeAs = 'USER_ACCESSING'; }],
+  ['bibliothèque', m => { m.dependencies.libraries = [{ libraryId: 'FICTIF' }]; }],
+  ['champ inconnu', m => { m.inconnu = true; }],
+  ['champ supprimé', m => { delete m.exceptionLogging; }],
+  ['fuseau changé', m => { m.timeZone = 'UTC'; }],
+  ['portée ajoutée', m => { m.oauthScopes = ['inattendu']; }]
+]) test('Liste fermée sur candidat, distant et restauration : ' + label, () => {
+  const bad = copy(candidateManifest); mutate(bad);
+  const x = setup(); x.state.candidate[1].source = JSON.stringify(bad);
+  // Une propriété ne peut élargir le contrat.
+  x.properties.set('REC_APPROVED_MANIFESTS', JSON.stringify([bad]));
   assert.equal(x.call('simulerSynchronisation').etat, 'REFUSE');
-  assert.equal(x.state.puts, 0); assert.equal(x.drive.size, 0);
+  x.state.files[1].source = JSON.stringify(bad);
+  assert.equal(x.call('sauvegarderSources').etat, 'REFUSE');
+  assert.equal(x.drive.size, 0); assert.equal(x.state.puts, 0);
+  // Sauvegarde intègre mais manifeste non approuvé : refus indépendant du hash.
+  const y = setup(); y.call('sauvegarderSources');
+  const backup = [...y.drive.values()][0]; backup.files[1].source = JSON.stringify(bad);
+  backup.hash = y.context.recHash_(backup.files);
+  const index = JSON.parse(y.properties.get('BACKUPS'));
+  index[0].hash = y.context.recHash_(backup); y.properties.set('BACKUPS', JSON.stringify(index));
+  assert.equal(y.call('simulerRestauration').etat, 'REFUSE'); assert.equal(y.state.puts, 0);
+});
+test('Paramètres et propriétés PROD ne peuvent rediriger aucune action', () => {
+  const x = setup();
+  for (const key of ['SCRIPT_ID', 'REC_SCRIPT_ID', 'DESTINATION', 'APP_ENV', 'SPREADSHEET_ID', 'REC_SPREADSHEET_ID']) {
+    x.properties.set(key, 'PROD_FICTIF');
+  }
+  x.approve(); assert.equal(x.call('synchroniserCommitApprouve').etat, 'SYNCHRONISATION_VERIFIEE');
+  x.call('simulerRestauration'); x.call('approuverSimulation');
+  assert.equal(x.call('restaurerSauvegardeApprouvee').etat, 'RESTAURATION_VERIFIEE');
+  assert(!JSON.stringify(x.calls).includes('PROD_FICTIF'));
+  const plan = { kind: 'SYNC', target: 'PROD_FICTIF', created: x.state.now, sha };
+  x.properties.set('PLAN', JSON.stringify(plan)); x.properties.set('APPROVAL', x.context.recHash_(plan));
+  assert.equal(x.call('synchroniserCommitApprouve').etat, 'REFUSE'); assert.equal(x.state.puts, 2);
 });
 test('Configuration et simulation sans PUT ni sauvegarde Drive', () => {
   const x = setup(); assert.equal(x.call('verifierConfiguration').etat, 'CONFIGURATION_VERIFIEE');

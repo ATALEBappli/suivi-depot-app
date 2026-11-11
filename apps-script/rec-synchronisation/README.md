@@ -1,4 +1,4 @@
-# REC-Synchronisation — préparation Mission 7
+# REC-Synchronisation — compatibilité Mission 9
 
 Code à revoir, pas encore installé ni testé sur Google. Aucun appel Google,
 installation, synchronisation, déclencheur ou déploiement réalisé par cette PR.
@@ -54,12 +54,22 @@ sous-répertoires, doublons, fichiers non prévus, sources manquantes et contenu
 trop volumineux. Liste fermée : `Code.gs`, `appsscript.json`, et `README.md`
 ignoré. Tout élargissement exige une PR du synchroniseur, pas une simple propriété.
 
-Le manifeste candidat doit être du JSON et correspondre sémantiquement au
-manifeste actuellement revu dans `apps-script/src/` (ordre des clés et indentation
-libres). Une portée, bibliothèque ou permission ajoutée est refusée. Ce manifeste
-métier conserve son accès web historique `ANYONE_ANONYMOUS` ; ce n'est pas une
-certification de sécurité de l'application. Le manifeste du synchroniseur ne
-contient aucun `webapp`.
+Deux manifestes seulement sont autorisés par comparaison JSON sémantique exacte
+(ordre des clés et indentation libres) : le manifeste historique
+`ANYONE_ANONYMOUS / USER_DEPLOYING` et celui de Mission 8
+`MYSELF / USER_DEPLOYING`. Tous deux ont exactement `timeZone=Europe/Paris`,
+`dependencies={}`, `exceptionLogging=STACKDRIVER`, `runtimeVersion=V8`.
+Toute autre valeur, clé ajoutée ou supprimée, portée ou bibliothèque est refusée.
+La liste est inscrite dans le code, jamais fournie par une propriété ou par GitHub.
+Le contrôle s'applique au candidat, aux sources distantes sauvegardées et aux
+sauvegardes restaurées ; un manifeste distant inconnu bloque donc l'opération.
+L'historique reste autorisé pour compatibilité/restauration explicite ; le restaurer
+peut réintroduire une déclaration d'accès anonyme. Il exige une revue et ne doit
+pas servir à contourner le backend privé. Le manifeste du synchroniseur reste
+sans `webapp` et ses portées sont inchangées.
+
+Voir [la validation Mission 9](../../docs/mission-9-validation.md) pour le partage
+du projet, les propriétés privées, les limites comptables et les risques.
 
 La simulation ne compile ni n'exécute le code candidat et ne prouve pas son
 innocuité. Vérifier les tests de la PR et le SHA sur GitHub avant de l'approuver.
@@ -142,7 +152,9 @@ d'édition et de collage de ces fichiers sur iPhone n'a pas été vérifié.
 1. Dans Safari, utiliser le compte Google REC uniquement. Vérifier hors de ce
    synchroniseur qu'il n'a aucun partage PROD. Ouvrir `SuiviDepotAPI-REC`, puis
    ses paramètres : relever le **Script ID** et confirmer le titre, le caractère
-   autonome et `SPREADSHEET_ID` vers le classeur fictif. Ne communiquer aucun ID.
+   autonome. Dans les propriétés privées du **backend**, confirmer `APP_ENV=REC`,
+   `SPREADSHEET_ID` vers le classeur fictif et `REC_SPREADSHEET_ID` exactement égal.
+   Ces propriétés ne sont ni celles du synchroniseur ni sauvegardées par lui. Ne communiquer aucun ID.
 2. GitHub → profil → Settings → Developer settings → Personal access tokens →
    Fine-grained tokens → Generate new token. Choisir le propriétaire du dépôt,
    **Only select repositories → suivi-depot-app**, **Contents: Read-only**,

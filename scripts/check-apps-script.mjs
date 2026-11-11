@@ -51,4 +51,22 @@ test('erreurs sensibles masquées',()=>{const t=setup();t.book.getSheetByName=()
 test('calendrier bissextile, limites et dates impossibles',()=>{const t=setup();assert.equal(json(t.post({...transaction,date:'2024-02-29',montant:1000000000})).ok,true);for(const date of ['2025-02-29','2026-13-01','2026-01-00','2026-04-31'])assert.equal(json(t.post({...transaction,date})).ok,false);assert.equal(t.writes.length,1);});
 test('erreur pendant écriture masquée, aucun nouvel essai automatique',()=>{const t=setup();let attempts=0;t.sheets.transactions.appendRow=()=>{attempts++;throw new Error('PRIVATE_WRITE');};const out=t.post(transaction);assert.equal(json(out).ok,false);assert.ok(!out.text.includes('PRIVATE'));assert.equal(attempts,1);});
 test('échec setValues ne vide pas préalablement la configuration',()=>{const t=setup();const before=JSON.stringify(t.data);let attempts=0;t.sheets.config_hedam.getRange=(r)=>r===1?{getValues:()=>[fixtures.config_hedam[0]]}:{setValues(){attempts++;throw new Error('PRIVATE_WRITE');}};assert.equal(json(t.get({action:'config',save:'hedam',payload:encodeURIComponent('[{"code":"REC","nom":"Fictif"}]')})).ok,false);assert.equal(attempts,1);assert.equal(JSON.stringify(t.data),before);});
+// Bornes comptables observées : aucun changement des règles Mission 8.
+for (const [label, amount, accepted] of [
+  ['zéro', 0, true], ['centime', '0.01', true], ['centime sous plafond', '999999999.99', true],
+  ['plafond inclus', '1000000000.00', true], ['centime au-dessus', '1000000000.01', false],
+  ['négatif', '-0.01', false], ['trois décimales', '12.345', false],
+  ['virgule française', '12,50', false], ['infini', Infinity, false], ['NaN', NaN, false]
+]) test('bornes montant et loyers : '+label, () => {
+  const t=setup();
+  if (accepted) assert.equal(t.api._amount_(amount), Number(amount));
+  else assert.throws(() => t.api._amount_(amount));
+  assert.equal(json(t.post({...transaction,montant:amount})).ok,accepted);
+  for(const [save, row] of [['logements',{num:'REC',type:'F2',locataire:'Fictif',loyer:amount}],
+    ['locaux',{code:'REC',nom:'Fictif',locataire:'',loyer:amount}]]) {
+    assert.equal(json(t.get({action:'config',save,payload:encodeURIComponent(JSON.stringify([row]))})).ok,accepted);
+  }
+  assert.equal(t.writes.length,accepted?3:0);
+  if(accepted) assert.equal(t.data.transactions.at(-1)[2],Number(amount));
+});
 console.log(`Total final : ${count} scénarios backend réussis.`);
