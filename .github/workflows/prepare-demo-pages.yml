@@ -1,0 +1,28 @@
+name: Préparer le ZIP Pages de démonstration (sans publication)
+# Uniquement à la demande. Pas de push, PR, déploiement ni écriture vers un dépôt.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: node --test tests/demo.mjs tests/demo-pages.mjs
+      - run: node scripts/prepare-demo-pages.mjs
+      - name: Identifier la version source
+        run: git rev-parse HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: suivi-depot-demo-pages
+          path: work/pages-demo/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
