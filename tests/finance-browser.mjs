@@ -1,0 +1,64 @@
+import { createRequire } from "node:module";
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+const { chromium } = createRequire(import.meta.url)("playwright");
+const base = process.env.DEMO_TEST_URL || "http://127.0.0.1:4173";
+mkdirSync("work/finance-screenshots", { recursive: true });
+for (const width of [1440, 390, 320]) {
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.DEMO_CHROMIUM_PATH || "/usr/bin/chromium" });
+  try {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const errors = [], external = [];
+    page.on("pageerror", e => errors.push(e.message));
+    page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+    page.on("request", r => { if (new URL(r.url()).origin !== new URL(base).origin) external.push(r.url()); });
+    page.on("response", r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
+    await page.goto(base);
+    await page.getByLabel("Identifiant fictif").fill("ahmed.admin");
+    await page.getByLabel("Code PIN (6 chiffres)").fill("123456");
+    await page.getByRole("button", { name: "Se connecter", exact: true }).click();
+    await page.getByRole("button", { name: "Synthèse", exact: true }).click();
+    await page.getByRole("heading", { name: "Synthèse financière", exact: true }).waitFor();
+    const compact = s => s.replace(/\s/g, "");
+    const amount = async key => compact(await page.locator(`[data-finance="${key}"]`).innerText());
+    assert.equal(await amount("cash"), "310000DA");
+    assert.equal(await amount("net"), "+225000DA");
+    assert.equal(await page.locator("[data-activity]").count(), 4);
+    const noOverflow = async () => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await noOverflow();
+    await page.screenshot({ path: `work/finance-screenshots/${width}-current.png`, fullPage: true });
+    const change = async (kind, fill = {}) => {
+      await page.getByRole("button", { name: "Changer de cycle / Période" }).click();
+      await page.getByLabel("Période", { exact: true }).selectOption(kind);
+      for (const [label, value] of Object.entries(fill)) await page.getByLabel(label, { exact: true }).fill(value);
+      await noOverflow();
+      await page.getByRole("button", { name: "Valider la sélection" }).click();
+    };
+    await change("previous");
+    assert.equal(await amount("net"), "+17000DA");
+    assert.equal(await amount("cash"), "87000DA");
+    await page.getByText("Cycle précédent contrôlé", { exact: false }).waitFor();
+    await change("month", { Mois: "2020-01" });
+    await page.getByText("Aucune transaction sur cette période.").waitFor();
+    assert.equal(await amount("net"), "0DA");
+    assert.equal(await amount("cash"), "310000DA");
+    await change("year", { Année: "2020" });
+    assert.equal(await amount("net"), "0DA");
+    await change("custom", { "Date de début": "2020-02-02", "Date de fin": "2020-01-01" });
+    await page.getByRole("alert").filter({ hasText: "ordre chronologique" }).waitFor();
+    await page.getByLabel("Date de fin", { exact: true }).fill("2020-03-01");
+    await page.getByRole("button", { name: "Valider la sélection" }).click();
+    assert.equal(await amount("net"), "0DA");
+    await change("current");
+    assert.equal(await amount("net"), "+225000DA");
+    await page.getByRole("button", { name: "Effectuer un comptage de caisse" }).click();
+    await page.getByText("Ce module sera disponible", { exact: false }).waitFor();
+    await page.getByRole("button", { name: "Fermer", exact: true }).click();
+    await noOverflow();
+    await page.getByRole("button", { name: "Utilisateurs", exact: true }).click();
+    await page.locator("[data-user]").first().waitFor();
+    assert.deepEqual(errors, []);
+    assert.deepEqual(external, []);
+    console.log(`Synthèse ${width}px : filtres, calculs, caisse, navigation, absence de débordement et appels externes OK`);
+  } finally { await browser.close(); }
+}
