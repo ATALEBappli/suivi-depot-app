@@ -17,6 +17,11 @@ export function shiftDate(date, days) {
 export function financeFixture(today = demoToday()) {
   const date = days => shiftDate(today, days);
   const controls = [
+    // Archives fictives sans mouvement, pour tester le parcours historique.
+    { id: "h0", date: date(-430), counted: 60000, theoretical: 60000 },
+    { id: "h1", date: date(-370), counted: 60000, theoretical: 60000 },
+    { id: "h2", date: date(-300), counted: 60000, theoretical: 60000 },
+    { id: "h3", date: date(-150), counted: 60000, theoretical: 60000 },
     { id: "c0", date: date(-75), counted: 60000, theoretical: 60000 },
     { id: "c1", date: date(-40), counted: 70000, theoretical: 72000 },
     { id: "c2", date: date(-7), counted: 85000, theoretical: 87000 },

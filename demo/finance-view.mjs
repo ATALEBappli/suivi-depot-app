@@ -1,5 +1,5 @@
 import { financeFixture } from "./finance-data.mjs";
-import { createFinanceState, cashCycles } from "./finance-model.mjs";
+import { createFinanceState, cashCycles, quickCashCycles, historicalCashCycles } from "./finance-model.mjs";
 
 const money = (value, signed = false) => `${value < 0 ? "−" : signed && value > 0 ? "+" : ""}${new Intl.NumberFormat("fr-FR").format(Math.abs(value))} DA`;
 const date = value => value.split("-").reverse().join("/");
@@ -22,8 +22,10 @@ export function renderFinance(main, { icon, showDialog, error }) {
     const snapshot = state.snapshot();
     const isCash = target === "cash";
     const selected = isCash ? (snapshot.cycleId === "current" ? data.controls.at(-1).id : snapshot.cycleId) : snapshot.analysisSelection.kind;
+    let draftCycle = selected;
+    let historyLimit = 20;
     const choices = isCash
-      ? cashCycles(data).map(c => [c.id, `${c.label} · ${date(c.start)} — ${date(c.end)}`])
+      ? quickCashCycles(data).map(c => [c.id, `${c.label} · ${date(c.start)} — ${date(c.end)}`])
       : [
           ["current", "Cycle en cours"],
           ["currentMonth", "Mois en cours"],
@@ -39,9 +41,21 @@ export function renderFinance(main, { icon, showDialog, error }) {
     showDialog(`<form class="period-form"><h2 id="dialog-title">${title}</h2>
       <p class="hint" id="period-help">${isCash ? "Seule la situation de la caisse sera modifiée. Les cycles sont délimités par les contrôles figés." : "Seuls les indicateurs et les quatre activités seront modifiés. Le cycle de caisse reste inchangé."}</p>
       <div class="form-error" role="alert" tabindex="-1"></div>
-      <fieldset class="period-choices" aria-describedby="period-help"><legend>${isCash ? "Cycle de caisse" : "Période d’analyse"}</legend>
-        ${choices.map(([value, label]) => `<label class="period-choice"><input type="radio" name="kind" value="${value}" ${value === selected ? 'checked autofocus' : ""} required><span>${label}</span><span class="choice-mark" aria-hidden="true">✓</span></label>`).join("")}
+      <div data-quick-panel><fieldset class="period-choices" aria-describedby="period-help"><legend>${isCash ? "Cycle de caisse" : "Période d’analyse"}</legend>
+        ${choices.map(([value, label]) => `<label class="period-choice"><input type="radio" name="kind" value="${value}" ${value === selected ? 'checked autofocus' : ""} ${isCash ? "" : "required"}><span>${label}</span><span class="choice-mark" aria-hidden="true">✓</span></label>`).join("")}
       </fieldset>
+      ${isCash ? `<p class="hint" data-selected-history ${choices.some(([id]) => id === selected) ? "hidden" : ""}>Cycle historique sélectionné : ${date(snapshot.cash.start)} — ${date(snapshot.cash.end)}</p>` : ""}
+      ${isCash && cashCycles(data).length > 3 ? '<button type="button" class="secondary wide" data-history-open>Consulter l’historique des cycles</button>' : ""}
+      </div>
+      ${isCash ? `<div data-history-panel hidden><button type="button" class="secondary" data-history-back>Retour aux cycles rapides</button>
+        <h3 tabindex="-1" data-history-title>Historique des cycles</h3>
+        <p class="hint">Cycles plus anciens, du plus récent au plus ancien. Choisissez un mois ou une année : les cycles qui chevauchent cette période seront affichés.</p>
+        <label class="field">Mois de l’historique<input type="month" name="historyMonth" disabled></label>
+        <label class="field">Année de l’historique<input type="number" name="historyYear" min="1000" max="9999" inputmode="numeric" disabled></label>
+        <button type="button" class="secondary" data-history-clear>Effacer les filtres</button>
+        <p class="hint" role="status" data-history-status></p>
+        <fieldset class="period-choices"><legend>Cycles historiques</legend><div data-history-results></div></fieldset>
+        <button type="button" class="secondary wide" data-history-more hidden>Afficher les cycles suivants</button></div>` : ""}
       ${isCash ? "" : `<label class="field" data-period="month" hidden>Mois<input type="month" name="month" value="${selection.month || data.today.slice(0, 7)}" required disabled></label>
       <label class="field" data-period="year" hidden>Année<input type="number" name="year" min="1000" max="9999" value="${selection.year || data.today.slice(0, 4)}" required disabled></label>
       <div data-period="custom" hidden><label class="field">Date de début<input type="date" name="start" value="${selection.start || data.today}" required disabled></label><label class="field">Date de fin<input type="date" name="end" value="${selection.end || data.today}" required disabled></label></div>`}
@@ -49,7 +63,7 @@ export function renderFinance(main, { icon, showDialog, error }) {
       e.preventDefault();
       try {
         const next = Object.fromEntries(new FormData(e.target));
-        if (isCash) state.selectCycle(next.kind);
+        if (isCash) state.selectCycle(draftCycle);
         else state.selectAnalysis(next);
         e.target.closest("dialog").close();
         paint();
@@ -64,10 +78,83 @@ export function renderFinance(main, { icon, showDialog, error }) {
         el.querySelectorAll("input").forEach(input => input.disabled = el.hidden);
       });
     };
+    const modal = form.closest("dialog");
+    const viewport = window.visualViewport;
+    const resize = event => {
+      modal.style.setProperty("--period-viewport-height", `${viewport?.height || window.innerHeight}px`);
+      modal.style.setProperty("--period-viewport-top", `${viewport?.offsetTop || 0}px`);
+      if (event?.type === "resize" && modal.contains(document.activeElement)) document.activeElement.scrollIntoView({ block: "nearest" });
+    };
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    modal.addEventListener("close", () => {
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+      modal.style.removeProperty("--period-viewport-height");
+      modal.style.removeProperty("--period-viewport-top");
+    }, { once: true });
+    resize();
+
+    if (isCash) {
+      const quickPanel = form.querySelector("[data-quick-panel]");
+      const historyPanel = form.querySelector("[data-history-panel]");
+      const month = form.elements.historyMonth, year = form.elements.historyYear;
+      const validate = form.querySelector('button:not([type="button"])');
+      const drawHistory = () => {
+        const results = form.querySelector("[data-history-results]");
+        const status = form.querySelector("[data-history-status]");
+        let cycles;
+        try { cycles = historicalCashCycles(data, { month: month.value, year: year.value }); }
+        catch (err) { results.innerHTML = ""; status.textContent = err.message; validate.disabled = true; form.querySelector("[data-history-more]").hidden = true; return; }
+        results.innerHTML = cycles.slice(0, historyLimit).map(c => `<label class="period-choice"><input type="radio" name="historyCycle" value="${c.id}" ${c.id === draftCycle ? "checked" : ""}><span>Du ${date(c.start)} au ${date(c.end)}</span><span class="choice-mark" aria-hidden="true">✓</span></label>`).join("");
+        validate.disabled = !cycles.slice(0, historyLimit).some(c => c.id === draftCycle);
+        status.textContent = cycles.length ? `${Math.min(historyLimit, cycles.length)} sur ${cycles.length} cycles` : "Aucun cycle historique pour cette période.";
+        form.querySelector("[data-history-more]").hidden = cycles.length <= historyLimit;
+      };
+      form.querySelector("[data-history-open]")?.addEventListener("click", () => {
+        quickPanel.hidden = true; historyPanel.hidden = false;
+        month.disabled = false; year.disabled = false;
+        drawHistory();
+        form.querySelector("[data-history-title]").focus();
+      });
+      form.querySelector("[data-history-back]")?.addEventListener("click", () => {
+        quickPanel.hidden = false; historyPanel.hidden = true;
+        month.disabled = true; year.disabled = true;
+        validate.disabled = false;
+        const hint = form.querySelector("[data-selected-history]");
+        const archived = historicalCashCycles(data).find(c => c.id === draftCycle);
+        hint.hidden = !archived;
+        if (archived) hint.textContent = `Cycle historique sélectionné : ${date(archived.start)} — ${date(archived.end)}`;
+        form.querySelectorAll('input[name="kind"]').forEach(input => input.checked = input.value === draftCycle);
+        form.querySelector("[data-history-open]").focus();
+      });
+      form.addEventListener("change", e => {
+        if (["kind", "historyCycle"].includes(e.target.name)) {
+          draftCycle = e.target.value;
+          validate.disabled = false;
+        }
+      });
+      if (month && year) {
+        for (const input of [month, year]) input.addEventListener("input", () => {
+          (input === month ? year : month).value = "";
+          historyLimit = 20; drawHistory();
+        });
+        form.querySelector("[data-history-clear]").onclick = () => {
+          month.value = ""; year.value = ""; historyLimit = 20; drawHistory();
+        };
+        form.querySelector("[data-history-more]").onclick = () => {
+          const previousLimit = historyLimit;
+          historyLimit += 20; drawHistory();
+          form.querySelectorAll('input[name="historyCycle"]')[previousLimit]?.focus();
+        };
+      }
+    }
     form.addEventListener("keydown", e => {
       if (e.key !== "Tab") return;
       const focusable = [...form.querySelectorAll("input, button")].filter(el =>
-        !el.disabled && el.getClientRects().length && (el.type !== "radio" || el.checked));
+        !el.disabled && el.getClientRects().length && (el.type !== "radio" || el.checked ||
+          (![...form.querySelectorAll(`input[name="${el.name}"]`)].some(radio => radio.checked && radio.getClientRects().length) &&
+            el === [...form.querySelectorAll(`input[name="${el.name}"]`)].find(radio => radio.getClientRects().length))));
       const first = focusable[0], last = focusable.at(-1);
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault(); last.focus();

@@ -31,6 +31,21 @@ export function cashCycles(data) {
     label: index === data.controls.length - 1 ? "Cycle de caisse en cours" : "Cycle clôturé",
   })).reverse();
 }
+// Présentation seulement : aucune suppression ni modification des contrôles.
+export function quickCashCycles(data) {
+  const labels = ["Cycle en cours", "Cycle précédent", "Avant-dernier cycle"];
+  return cashCycles(data).slice(0, 3).map((cycle, index) => ({ ...cycle, label: labels[index] }));
+}
+export function historicalCashCycles(data, { month = "", year = "" } = {}) {
+  let start, end;
+  if (month) ({ start, end } = monthRange(month));
+  else if (year) {
+    start = `${year}-01-01`; end = `${year}-12-31`;
+    if (!validDate(start) || !validDate(end)) throw Error("Année invalide.");
+  }
+  // Inclure un cycle qui chevauche le mois/l’année, même s’il a commencé avant.
+  return cashCycles(data).slice(3).filter(cycle => !start || (cycle.start <= end && cycle.end >= start));
+}
 export function cashSituation(data, cycleId = "current") {
   const cycles = cashCycles(data);
   const cycle = cycleId === "current" ? cycles[0] : cycles.find(c => c.id === cycleId);

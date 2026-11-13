@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { financeFixture } from "../demo/finance-data.mjs";
-import { analyze, cashSituation, cashCycles, createFinanceState, validDate } from "../demo/finance-model.mjs";
+import { analyze, cashSituation, cashCycles, createFinanceState, validDate, quickCashCycles, historicalCashCycles } from "../demo/finance-model.mjs";
 const data = financeFixture("2026-11-12");
 function check(selection, incoming, outgoing) {
   const s = analyze(data, selection);
@@ -28,7 +28,7 @@ test("cycle actif : quatre activités et natures distinctes", () => {
   assert.equal(s.byNature.repayment.incoming, 50000);
 });
 test("tous les anciens cycles, leurs comptages et écarts", () => {
-  assert.deepEqual(cashCycles(data).map(c => c.id), ["c2", "c1", "c0"]);
+  assert.deepEqual(cashCycles(data).slice(0, 3).map(c => c.id), ["c2", "c1", "c0"]);
   const c = cashSituation(data, "c1");
   assert.equal(c.incoming, 50000);
   assert.equal(c.outgoing, 33000);
@@ -113,4 +113,37 @@ test("mouvements bancaires inclus dans les flux, exclus de tous les cycles physi
   assert.equal(analyze(d, { kind: "previousMonth" }).byNature.loan.incoming, 20000);
   for (const cycle of cashCycles(d))
     assert.deepEqual(cashSituation(d, cycle.id), cashSituation(data, cycle.id));
+});
+
+test("trois cycles rapides maximum, sans perte d’archives", () => {
+  const before = structuredClone(data);
+  assert.deepEqual(quickCashCycles(data).map(c => c.label), ["Cycle en cours", "Cycle précédent", "Avant-dernier cycle"]);
+  assert.equal(historicalCashCycles(data).length, 4);
+  assert.deepEqual(historicalCashCycles(data).map(c => c.id), ["h3", "h2", "h1", "h0"]);
+  for (const count of [1, 2, 3]) {
+    const short = { ...data, controls: data.controls.slice(-count) };
+    assert.equal(quickCashCycles(short).length, count);
+    assert.equal(historicalCashCycles(short).length, 0);
+  }
+  assert.deepEqual(data, before);
+});
+test("historique : filtrage par chevauchement du mois ou de l’année", () => {
+  const archived = historicalCashCycles(data);
+  const month = archived[0].end.slice(0, 7);
+  const filtered = historicalCashCycles(data, { month });
+  assert(filtered.some(c => c.id === archived[0].id));
+  assert(filtered.every(c => c.start <= month + "-31" && c.end >= month + "-01"));
+  assert.deepEqual(historicalCashCycles(data, { year: "2025" }).map(c => c.id), ["h1", "h0"]);
+  assert.equal(historicalCashCycles(data, { year: "2020" }).length, 0);
+  assert.throws(() => historicalCashCycles(data, { month: "2026-13" }));
+  assert.throws(() => historicalCashCycles(data, { year: "26" }));
+});
+test("choisir une archive ne change jamais l’analyse financière", () => {
+  const state = createFinanceState(data);
+  state.selectAnalysis({ kind: "previousMonth" });
+  const analysis = state.snapshot().analysis;
+  state.selectCycle("h1");
+  assert.deepEqual(state.snapshot().analysis, analysis);
+  assert.equal(state.snapshot().cash.theoretical, 60000);
+  assert.equal(state.snapshot().cash.discrepancy, 0);
 });

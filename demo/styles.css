@@ -884,3 +884,40 @@ dialog:has(.period-form) { max-height: calc(100dvh - 32px); overflow-y: auto; ov
   dialog:has(.period-form) { width: 460px; padding: 20px 16px; }
   .period-form input[type="date"], .period-form input[type="month"] { min-width: 0; max-width: 100%; }
 }
+/* Safari donne aux champs temporels une largeur intrinsèque : contraindre
+   le conteneur et le champ, sans remplacer leurs sélecteurs natifs. */
+.period-form, .period-form [data-period], .period-form [data-history-panel],
+.period-form [data-quick-panel], .period-form label.field {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.period-form label.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  inline-size: 100%;
+}
+.period-form input[type="date"], .period-form input[type="month"],
+.period-form input[type="number"] {
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.period-form input::-webkit-date-and-time-value { min-width: 0; text-align: left; }
+.period-form input::-webkit-datetime-edit { min-width: 0; padding: 0; }
+.period-form [data-history-results] { display: grid; gap: 8px; min-width: 0; }
+.period-form [data-history-title] { margin-top: 16px; }
+dialog:has(.period-form) { max-height: calc(var(--period-viewport-height, 100dvh) - 32px); }
+@media (max-width: 700px) {
+  dialog:has(.period-form) {
+    position: fixed;
+    top: calc(var(--period-viewport-top, 0px) + 16px);
+    bottom: auto;
+    margin: 0 auto;
+  }
+}
+/* L’attribut hidden doit primer sur la grille des libellés. */
+.period-form [hidden] { display: none !important; }
