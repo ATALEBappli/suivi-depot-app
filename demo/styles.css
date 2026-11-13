@@ -864,3 +864,23 @@ main:focus {
   .finance-page .page-top > div { width: 100%; }
   .finance-page .page-top .badge { margin-top: 0; }
 }
+/* Les deux filtres ont leur propre état et restent dans le dialogue natif. */
+.section-period { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+.section-period strong { color: var(--navy); }
+.period-form { min-width: 0; }
+.period-choices { border: 0; padding: 0; margin: 16px 0; min-width: 0; display: grid; gap: 8px; }
+.period-choices legend { font-weight: 600; margin-bottom: 10px; }
+.period-choice { display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid transparent; border-radius: 12px; background: var(--light); cursor: pointer; font-size: 14px; }
+.period-choice input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--blue); }
+.period-choice > span:first-of-type { flex: 1; overflow-wrap: anywhere; }
+.period-choice:has(input:checked) { border-color: var(--blue); background: #e5eeff; }
+.period-choice:focus-within { outline: 3px solid var(--blue); outline-offset: 2px; }
+.choice-mark { visibility: hidden; color: var(--blue); font-weight: 700; }
+.period-choice:has(input:checked) .choice-mark { visibility: visible; }
+dialog:has(.period-form) { max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width:700px) {
+  .finance-page .finance-heading > .secondary { width: 100%; }
+  .finance-page .finance-heading > .badge { order: -1; }
+  dialog:has(.period-form) { width: 460px; padding: 20px 16px; }
+  .period-form input[type="date"], .period-form input[type="month"] { min-width: 0; max-width: 100%; }
+}
