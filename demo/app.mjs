@@ -1,3 +1,4 @@
+import { renderFinance } from "./finance-view.mjs";
 import { createDemo, groups, standard, all } from "./model.mjs";
 const demo = createDemo();
 let entered = false,
@@ -104,7 +105,7 @@ function reveal(form) {
 }
 function shell(route) {
   document.querySelector("#header").innerHTML =
-    `<div class="inner"><div class="brand"><img src="assets/logo.svg" alt=""><div>Suivi Dépôt<small>${route === "connexion" ? "Prototype V2" : "Utilisateurs"}</small></div></div><span class="badge">Démo</span>${entered ? `<span class="avatar mini" aria-label="Visiteur de démonstration">AD</span><button type="button" class="quiet" data-action="logout" aria-label="Quitter la démonstration">${icon("logout")}</button>` : ""}</div>`;
+    `<div class="inner"><div class="brand"><img src="assets/logo.svg" alt=""><div>Suivi Dépôt<small>${route === "connexion" ? "Prototype V2" : route === "synthese" ? "Synthèse" : "Utilisateurs"}</small></div></div><span class="badge">Démo</span>${entered ? `<span class="avatar mini" aria-label="Visiteur de démonstration">AD</span><button type="button" class="quiet" data-action="logout" aria-label="Quitter la démonstration">${icon("logout")}</button>` : ""}</div>`;
   document.querySelector("#navigation").innerHTML = entered
     ? [
         ["chart", "Synthèse"],
@@ -115,7 +116,7 @@ function shell(route) {
       ]
         .map(
           ([i, label]) =>
-            `<button type="button" ${i === "users" ? 'data-action="users" aria-current="page"' : 'disabled title="Hors périmètre de ce prototype"'}>${icon(i)}<span class="nav-label">${label}</span></button>`,
+            `<button type="button" ${["users", "chart"].includes(i) ? `data-action="${i === "chart" ? "summary" : "users"}" ${((i === "chart") === (route === "synthese")) ? 'aria-current="page"' : ""}` : 'disabled title="Hors périmètre de ce prototype"'}>${icon(i)}<span class="nav-label">${label}</span></button>`,
         )
         .join("")
     : "";
@@ -303,6 +304,7 @@ function render() {
   const route = parts[0] || "connexion";
   shell(route);
   if (route === "connexion") login();
+  else if (route === "synthese") renderFinance(main, { icon, showDialog, error });
   else if (route === "utilisateurs") users();
   else if (route === "creation") create();
   else if (route === "permissions") {
@@ -316,7 +318,7 @@ function render() {
     go(entered ? "utilisateurs" : "connexion");
     return;
   }
-  document.title = `${{ connexion: "Connexion", utilisateurs: "Utilisateurs", creation: "Créer un utilisateur", permissions: "Permissions" }[route]} — Suivi Dépôt · Démonstration`;
+  document.title = `${{ connexion: "Connexion", synthese: "Synthèse financière", utilisateurs: "Utilisateurs", creation: "Créer un utilisateur", permissions: "Permissions" }[route]} — Suivi Dépôt · Démonstration`;
   window.scrollTo(0, 0);
   main.focus();
 }
@@ -330,6 +332,7 @@ document.addEventListener("click", (e) => {
     go("connexion");
   }
   if (action === "users") go("utilisateurs");
+  if (action === "summary") go("synthese");
   if (action === "create") go("creation");
   if (action === "permissions") go(`permissions/${id}`);
   if (action === "toggle") {
