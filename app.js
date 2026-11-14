@@ -206,6 +206,7 @@ async function apiReadConfigAll() {
   const url = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=config&what=all';
   const res = await jsonp(url);
   if (!res || !res.ok) throw new Error((res && res.error) || 'config read failed');
+  window.REFERENTIEL_V2_ACTIVE = res.referentielV2 === true;
   return res.config || { logements: [], locaux: [] };
 }
 
@@ -482,6 +483,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       APARTS = []; LOCAUX = []; HEDAM = [];
     }
     renderApartsTable();
+    if (window.REFERENTIEL_V2_ACTIVE) {
+      document.getElementById('cfg-log-table')?.closest('article')?.setAttribute('hidden','');
+      const status = document.getElementById('cfg-v2-status');
+      if (status) status.textContent = 'Référentiel V2 actif : la modification de la liste historique est désactivée.';
+      const link = document.getElementById('cfg-v2-link');
+      if (link) { link.href = window.API_URL + (window.API_URL.includes('?') ? '&' : '?') + 'action=v2.ui'; link.hidden = false; }
+    }
     renderLocauxTable();
     renderHedamTable();
     attachParamHandlers();

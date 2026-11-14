@@ -20,3 +20,11 @@ jobs:
           node-version: '24'
       - name: Vérifier la syntaxe sans exécuter l’application
         run: node scripts/check-js.mjs
+
+      - name: Vérifier le référentiel V2 et ses régressions sans réseau
+        run: |
+          node tests/referentiel-v2.mjs
+          node tests/import-referentiel-v2.mjs
+          node scripts/check-apps-script.mjs
+          node tests/rec-synchronisation.mjs
+          node tests/isolation.mjs

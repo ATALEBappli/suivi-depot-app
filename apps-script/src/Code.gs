@@ -89,6 +89,9 @@ function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) throw new Error('INVALID_INPUT');
     const body = JSON.parse(e.postData.contents);
+    if (typeof body?.action === 'string' && body.action.startsWith('v2.')) {
+      try { return _json(_v2Write_(body)); } catch(err) { return _json(_v2Error_(err)); }
+    }
     const row = _transactionRow_(body);
     const sh = _getSheet();
     sh.appendRow(row);
@@ -100,6 +103,9 @@ function doPost(e) {
 /*************** CONFIG PERSISTANTE – LOGEMENTS ***************/
 function _getCfgLogementsSheet_() { return _checkedSheets_()['config_logements']; }
 function _readConfigLogements_() {
+  if (typeof _v2Enabled_ === 'function' && _v2Enabled_()) {
+    return ReferentielV2.legacy(_v2Load_().state, _v2Today_());
+  }
   const sh = _getCfgLogementsSheet_();
   const values = sh.getDataRange().getValues();
   const header = values.shift() || [];
@@ -113,7 +119,10 @@ function _readConfigLogements_() {
       loyer:      Number(r[idx.loyer] || 0)
     }));
 }
-function _writeConfigLogements_(rows) { _replaceConfig_('config_logements', rows); }
+function _writeConfigLogements_(rows) {
+  if (typeof _v2Enabled_ === 'function' && _v2Enabled_()) throw new Error('V2_LEGACY_WRITE_BLOCKED');
+  _replaceConfig_('config_logements', rows);
+}
 /*************** CONFIG PERSISTANTE – LOCAUX ***************/
 function _getCfgLocauxSheet_() { return _checkedSheets_()['config_locaux']; }
 function _readConfigLocaux_() {
@@ -153,6 +162,14 @@ function doGet(e) {
     : null;
   if (cb && !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(cb)) return _json({ok:false,error:'INVALID_CALLBACK'});
   const action = (e && e.parameter && e.parameter.action) || '';
+  if (action.startsWith('v2.')) {
+    try {
+      if (action === 'v2.ui') { _v2Actor_(); _v2Book_(); return HtmlService.createHtmlOutputFromFile('ParametrageV2').setTitle('Paramétrage V2 — REC'); }
+      if (action === 'v2.read') return _json(_v2Read_(), cb);
+      if (action === 'v2.simulate') return _json(_v2Simulate_(JSON.parse(e.parameter.rows)), cb);
+      return _json({ok:false,error:'POST_REQUIRED'}, cb);
+    } catch(err) { return _json(_v2Error_(err), cb); }
+  }
   // PING
   if (e && e.parameter && e.parameter.ping === '1') {
     const out = ContentService.createTextOutput('pong').setMimeType(ContentService.MimeType.TEXT);
@@ -172,7 +189,7 @@ function doGet(e) {
           locaux: _readConfigLocaux_(),
           hedam: _readConfigHedam_()
         };
-        return _json({ ok:true, config }, cb);
+        return _json({ ok:true, config, referentielV2: typeof _v2Enabled_ === 'function' && _v2Enabled_() }, cb);
       }
       if (e.parameter.save === 'logements') {
         if (!e.parameter.payload) throw new Error('INVALID_INPUT');
