@@ -83,3 +83,14 @@ classeur/onglets fictifs et sans service réseau disponible. Il remplace les tes
 historiques qui attendaient précisément les comportements dangereux corrigés.
 `node tests/rec-synchronisation.mjs` utilise le candidat MYSELF par défaut,
 conserve une fixture historique explicite et teste les refus et restaurations.
+
+## US-015 — sources candidates non déployées
+
+`ReferentielV2.gs` et `ReferentielV2Api.gs` ajoutent le modèle et son API REC.
+La préparation complète, incluant l'interface HtmlService générée, est réalisée
+par `node scripts/prepare-v2-rec.mjs` dans `work/`, sans envoi.
+Voir [modèle, journal, permissions, limites et recette](../../docs/us-015-recette.md).
+Les quatre schémas historiques restent exacts. L'activation explicite V2 ajoute
+un journal séparé et interdit la sauvegarde historique des logements. Elle ne
+modifie aucune transaction. Ne pas envoyer le seul Code.gs ou utiliser les
+contrats du synchroniseur antérieur pour ce nouveau bundle.

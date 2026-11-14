@@ -15,7 +15,7 @@ Navigateur → Google Apps Script (JSONP) → Google Sheets du propriétaire
 | `styles.css` | Présentation de l’interface. |
 | `app.js` | Chargement JSONP, filtres, synthèse, saisie et appels de paramétrage. |
 | `manifest.json`, `sw.js` | Métadonnées PWA et cache des ressources du même domaine ; les requêtes externes ne sont pas interceptées par le service worker. |
-| Google Apps Script | API externe appelée par le navigateur ; son code n’est pas encore versionné ici. Son fonctionnement interne et ses permissions restent à auditer à partir du code réel. |
+| Google Apps Script | Sources REC versionnées dans `apps-script/src/`. Le code historique et ses garde-fous ont évolué depuis la préparation initiale ; voir les README backend et la recette US-015. |
 | Google Sheets | Stockage des données dans le document du propriétaire. Aucun accès effectué pour cette mission. |
 
 L’URL Apps Script est actuellement définie dans le HTML. Ne pas la recopier dans les nouveaux fichiers. Le frontend emploie des scripts JSONP avec un paramètre de callback, y compris pour des actions d’enregistrement. Les contrats et protections du backend doivent être vérifiés lors de son intégration, sans déduire des contrôles d’interface qu’une autorisation serveur existe.
@@ -33,3 +33,10 @@ Ne pas ouvrir l’interface actuelle pour un test supposé local : elle conserve
 Les règles métier cibles sont dans [regles-metier.md](regles-metier.md). Elles ne constituent pas une description de fonctionnalités déjà sécurisées. Le versionnement futur du backend est décrit dans [apps-script/README.md](../apps-script/README.md).
 
 Limite connue issue de l’inspection : `app.js` appelle `toggleHedamExtra` sans définition présente dans le dépôt. Un contrôle de syntaxe ne détecte pas ce type d’erreur d’exécution ; aucune correction applicative n’est incluse ici.
+
+## Évolution US-015 (locale, non déployée)
+
+Le référentiel V2 est décrit dans [la procédure US-015](us-015-recette.md).
+Ses six entités sont stockées dans un journal additif distinct des quatre onglets
+historiques. Le Paramétrage privé utilise HtmlService et des contrôles serveur ;
+le serveur local dédié simule Google sans aucun appel distant.
