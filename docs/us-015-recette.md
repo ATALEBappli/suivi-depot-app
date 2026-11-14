@@ -307,3 +307,10 @@ fonctions Saisie/Synthèse après ce bloc sont inchangés. Aucun test sur Google
 permissions Google effectives, quotas, accès web REC ou déploiement n'a été effectué.
 Le workflow existant de syntaxe inclut désormais les contrôles métier/import et
 les régressions hors réseau ; il ne contient aucune publication ni déploiement.
+
+## Complément avant autorisation de recette
+
+Voir [les vérifications de préparation REC](us-015-preparation-recette.md) pour
+le contrôle agrégé à 220 000 DA, l'absence du fichier Excel définitif, les tests
+explicites de modification des trois entités et les 24 étapes de recette future.
+Ce complément ne donne aucune autorisation Google supplémentaire.
