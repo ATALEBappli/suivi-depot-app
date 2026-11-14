@@ -20,3 +20,6 @@ jobs:
           node-version: '24'
       - name: Vérifier la syntaxe sans exécuter l’application
         run: node scripts/check-js.mjs
+
+      - name: Tester l'automatisation REC sur doublures sans secrets
+        run: node --test tests/rec-automation/*.test.mjs

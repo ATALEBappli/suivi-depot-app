@@ -1,0 +1,123 @@
+name: REC Apps Script — opérations manuelles
+# Inactif par défaut : branche par défaut + variable explicitement activée requises.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        description: Opération REC autorisée
+        default: inspect
+        required: true
+        options: [inspect, install, deploy, restore]
+      source_sha:
+        type: string
+        description: SHA complet approuvé (install/deploy uniquement)
+        required: false
+      expected_head_sha256:
+        type: string
+        description: Empreinte HEAD fournie par inspect (toute écriture)
+        required: false
+      audit_confirmed:
+        type: boolean
+        description: Audit récent de TOUS les comptes/déclencheurs, aucun droit PROD en exécution, configuration sauvegardée, V2 inactive et exécutions gelées
+        default: false
+      backup_reference:
+        type: string
+        description: Référence opaque de sauvegarde (restore)
+        required: false
+      backup_sha256:
+        type: string
+        description: Empreinte de sauvegarde (restore)
+        required: false
+      recovery_reference:
+        type: string
+        description: Référence pending à résoudre (restore après interruption)
+        required: false
+      restore_deployment:
+        type: boolean
+        description: Restaurer aussi la version privée du déploiement connue dans la sauvegarde
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: apps-script-rec
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      content_hash: ${{ steps.package.outputs.content_hash }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Vérifier les gates de dépôt avant l'accès à l'environnement REC
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
+          REC_OPERATION: ${{ inputs.operation }}
+        run: node scripts/rec-automation/cli.mjs gate
+      - name: Contrôles de l'orchestrateur sans secrets Google
+        run: node --test tests/rec-automation/*.test.mjs
+      - name: Construire le commit applicatif comme données, sans exécuter ses scripts
+        id: package
+        if: inputs.operation == 'install' || inputs.operation == 'deploy'
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node scripts/rec-automation/cli.mjs package "$RUNNER_TEMP/bundle.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: inputs.operation == 'install' || inputs.operation == 'deploy'
+        with:
+          name: rec-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/bundle.json
+          retention-days: 1
+          if-no-files-found: error
+  google:
+    needs: prepare
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true'
+    environment: REC
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.operation == 'install' || inputs.operation == 'deploy'
+        with:
+          name: rec-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/rec-bundle
+      - name: Exécuter exclusivement l'orchestrateur de confiance
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
+          REC_OPERATION: ${{ inputs.operation }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          REC_EXPECTED_BUNDLE_HASH: ${{ needs.prepare.outputs.content_hash }}
+          REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
+          REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}
+          REC_GOOGLE_EMAIL: ${{ secrets.REC_GOOGLE_EMAIL }}
+          REC_OWNER_EMAIL: ${{ secrets.REC_OWNER_EMAIL }}
+          REC_DEPLOYMENT_ID: ${{ secrets.REC_DEPLOYMENT_ID }}
+          REC_GOOGLE_OAUTH: ${{ secrets.REC_GOOGLE_OAUTH }}
+          REC_EXPECTED_HEAD_HASH: ${{ inputs.expected_head_sha256 }}
+          REC_AUDIT_CONFIRMED: ${{ inputs.audit_confirmed }}
+          REC_BACKUP_REFERENCE: ${{ inputs.backup_reference }}
+          REC_BACKUP_HASH: ${{ inputs.backup_sha256 }}
+          REC_RECOVERY_REFERENCE: ${{ inputs.recovery_reference }}
+          REC_RESTORE_DEPLOYMENT: ${{ inputs.restore_deployment }}
+        run: node scripts/rec-automation/cli.mjs run "$RUNNER_TEMP/rec-bundle/bundle.json"
