@@ -1,0 +1,61 @@
+# BROUILLON DE CONCEPTION — hors .github/workflows/, donc non enregistré.
+# Les opérations Google sont volontairement bloquées : aucun client OAuth/API inclus.
+# À finaliser et revoir avant toute installation sur la branche par défaut.
+name: REC Apps Script — lancement manuel contrôlé
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Opération demandée
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, install, deploy, restore]
+      source_sha:
+        description: SHA Git complet revu (40 caractères)
+        required: true
+        type: string
+      backup_reference:
+        description: Référence privée de sauvegarde (restauration seulement)
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: apps-script-rec
+  cancel-in-progress: false
+jobs:
+  validate-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Contrôler la demande sans accès Google
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[a-f0-9]{40}', os.environ['SOURCE_SHA']), 'SHA complet requis'
+          assert os.environ['OPERATION'] in ('inspect','install','deploy','restore')
+          print('Demande syntaxiquement valide. Aucun accès Google effectué.')
+          PY
+  google-not-implemented:
+    needs: validate-request
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Arrêt avant authentification et toute opération Google
+        run: |
+          echo 'Brouillon uniquement : inspection Google, sauvegarde, installation, déploiement et restauration non implémentés.'
+          echo 'Ce fichier ne doit pas être présenté comme un déployeur opérationnel.'
+          exit 1
+# Future implémentation requise, NON présente dans ce brouillon :
+# - code d'orchestration de confiance, distinct du commit applicatif candidat ;
+# - environnement GitHub REC protégé avant mise à disposition des secrets ;
+# - compte utilisateur OAuth dédié REC, identité vérifiée, aucun compte de service ;
+# - cible fixe hors Git et empreinte attendue revue, aucun input Script ID/URL ;
+# - getContent + sauvegarde privée relue et vérifiée avant updateContent ;
+# - comparaison du HEAD distant juste avant écriture, aucun réessai aveugle ;
+# - version immuable puis déploiement MYSELF/USER_DEPLOYING explicitement demandé ;
+# - restauration séparée ; aucun scripts.run, appel Sheets, import ou activation V2.
