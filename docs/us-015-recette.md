@@ -1,5 +1,12 @@
 # US-015 — Référentiel V2 : implémentation, migration et recette
 
+> Mise à jour : l’Excel définitif a depuis été reçu et contrôlé. Voir
+> [le dernier contrôle et plan REC](us-015-plan-execution-rec.md), qui remplace
+> les réserves de source manquante ci-dessous et signale les écarts de libellés
+> ainsi que la limite du lecteur XLSX direct. Les anciennes observations sont
+> conservées comme compte rendu de leur intervention.
+
+
 État : implémenté localement sur `dev/us-015-referentiel`. Aucun accès Google,
 écriture REC/PROD, envoi Apps Script, déploiement Pages, fusion ou publication.
 

@@ -1,5 +1,12 @@
 # US-015 — Vérifications avant autorisation de recette Google
 
+> Mise à jour : l’Excel définitif a depuis été reçu et contrôlé. Voir
+> [le dernier contrôle et plan REC](us-015-plan-execution-rec.md), qui remplace
+> les réserves de source manquante ci-dessous et signale les écarts de libellés
+> ainsi que la limite du lecteur XLSX direct. Les anciennes observations sont
+> conservées comme compte rendu de leur intervention.
+
+
 Date : 14 novembre 2026 (Europe/Paris). Base examinée : commit `401f2f5`, branche
 `dev/us-015-referentiel`. Cette intervention complète les tests et la documentation ;
 aucun fichier applicatif n'est modifié. Aucun accès Google, changement de classeur,
