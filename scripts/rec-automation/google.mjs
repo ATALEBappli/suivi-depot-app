@@ -69,7 +69,13 @@ export class Google {
   createDeployment(version,description){return this.request('POST',this.projectUrl()+'/deployments',{versionNumber:version,manifestFileName:'appsscript',description});}
   updateDeployment(id,version,description) {
     requireThat(this.policy.deploymentId && id===this.policy.deploymentId,'UNEXPECTED_DEPLOYMENT_ID');
-    return this.request('PUT',this.projectUrl()+'/deployments/'+encodeURIComponent(id),{deploymentConfig:{scriptId:this.policy.scriptId,versionNumber:version,manifestFileName:'appsscript',description}});
+    return this.updateKnownDeployment(id,version,description);
+  }
+  async updateKnownDeployment(id,version,description) {
+    requireThat(this.policy.deploymentId && id===this.policy.deploymentId,'UNEXPECTED_DEPLOYMENT_ID');
+    const result=await this.request('PUT',this.projectUrl()+'/deployments/'+encodeURIComponent(id),{deploymentConfig:{scriptId:this.policy.scriptId,versionNumber:version,manifestFileName:'appsscript',description}});
+    if(result?.deploymentId!==id)throw new Refusal('UNEXPECTED_DEPLOYMENT_ID',true);
+    return rememberDeploymentProject(result,this.policy.scriptId);
   }
   fileMetadata(id) {
     requireThat(id===this.policy.scriptId || id===this.policy.sheetId,'UNEXPECTED_METADATA_TARGET');
