@@ -35,3 +35,40 @@ test('preuve sauvegarde, URL et version créée modifiées : arrêt',async()=>{
   await assert.rejects(()=>inspectPendingDeploy(f));assert.deepEqual(f.writes,[]);
  }
 });
+
+function rewriteFixtureBackup(f,mutate) {
+ const key='backup:'+f.expected.backupTag,b=f.records.get(key);mutate(b);
+ const hash=digest(b);f.expected.backupHash=hash;
+ f.records.get('operation:'+f.expected.tag).checkpoint.hash=hash;
+ f.pending[0].value.checkpoint.hash=hash;
+}
+for(const position of ['first','last'])test('HEAD non versionné '+position+' : comparaison du même périmètre',async()=>{
+ const f=await fixture();rewriteFixtureBackup(f,b=>{
+  const head={deploymentId:'HEAD_FICTIF_1234567890',deploymentConfig:{scriptId:policy.scriptId,description:'HEAD'}};
+  if(position==='first')b.deployments.unshift(head);else b.deployments.push(head);
+ });
+ const before=clone([...f.records]),result=await inspectPendingDeploy(f);
+ assert.equal(result.classification,'new_version_published');assert.deepEqual(result.backupDeploymentCounts,{raw:2,versioned:1,unversioned:1});
+ assert.deepEqual([...f.records],before);assert.deepEqual(f.writes,[]);
+});
+test('divergences réelles de sauvegarde : refus distincts et sécurité maintenue',async()=>{
+ for(const [mode,code] of [['count','COUNT'],['id','ID'],['version','VERSION'],['project','PROJECT'],['url','ENTRYPOINTS'],['public','ENTRYPOINTS']]) {
+  const f=await fixture();rewriteFixtureBackup(f,b=>{
+   const d=b.deployments[0];
+   if(mode==='count')b.deployments.push(deployment(2,'SECOND_DEPLOY_FICTIF_1234567890'));
+   if(mode==='id')d.deploymentId='OTHER_DEPLOY_FICTIF_1234567890';
+   if(mode==='version')d.deploymentConfig.versionNumber=3;
+   if(mode==='project')d.deploymentConfig.scriptId='SCRIPT_PROD_FICTIF_1234567890';
+   if(mode==='url')d.entryPoints[0].webApp.url='https://script.google.com/macros/s/OTHER_FICTIF/exec';
+   if(mode==='public')d.entryPoints[0].webApp.entryPointConfig.access='ANYONE_ANONYMOUS';
+  });
+  await assert.rejects(()=>inspectPendingDeploy(f),new RegExp('BACKUP_BASELINE_'+code+'_MISMATCH'));
+  assert.deepEqual(f.writes,[]);
+ }
+});
+test('scriptId brut absent accepté seulement dans la sauvegarde authentifiée',async()=>{
+ const f=await fixture();rewriteFixtureBackup(f,b=>delete b.deployments[0].deploymentConfig.scriptId);
+ assert.equal((await inspectPendingDeploy(f)).backupVerified,true);
+ f.records.get('backup:'+f.expected.backupTag).deployments[0].deploymentConfig.versionNumber=4;
+ await assert.rejects(()=>inspectPendingDeploy(f),/BACKUP_HASH_MISMATCH/);
+});

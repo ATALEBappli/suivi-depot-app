@@ -27,10 +27,16 @@ export async function inspectPendingDeploy({api,store,policy,state,pending,expec
   requireThat(Array.isArray(before) && before.length===1 && before[0].id===d.deploymentId &&
     before[0].scriptId===policy.scriptId && Number.isInteger(before[0].version) && before[0].version>0 &&
     canonical(before[0].entryPoints)===canonical(d.entryPoints),'BASELINE_DEPLOYMENT_MISMATCH');
-  requireThat(b.deployments?.length===1 && b.deployments[0].deploymentId===before[0].id &&
-    b.deployments[0].deploymentConfig?.versionNumber===before[0].version &&
-    (!Object.hasOwn(b.deployments[0].deploymentConfig,'scriptId') || b.deployments[0].deploymentConfig.scriptId===policy.scriptId) &&
-    canonical(b.deployments[0].entryPoints)===canonical(before[0].entryPoints),'BACKUP_BASELINE_MISMATCH');
+  // La sauvegarde conserve la réponse REST brute (HEAD compris), tandis que
+  // deploymentsBefore ne conserve que les déploiements versionnés.
+  requireThat(Array.isArray(b.deployments),'INVALID_BACKUP_DEPLOYMENTS');
+  const backupVersioned=b.deployments.filter(d=>d?.deploymentConfig?.versionNumber!==undefined);
+  requireThat(backupVersioned.length===1,'BACKUP_BASELINE_COUNT_MISMATCH');
+  const baseline=backupVersioned[0];
+  requireThat(baseline.deploymentId===before[0].id,'BACKUP_BASELINE_ID_MISMATCH');
+  requireThat(baseline.deploymentConfig.versionNumber===before[0].version,'BACKUP_BASELINE_VERSION_MISMATCH');
+  requireThat(!Object.hasOwn(baseline.deploymentConfig,'scriptId') || baseline.deploymentConfig.scriptId===policy.scriptId,'BACKUP_BASELINE_PROJECT_MISMATCH');
+  requireThat(canonical(baseline.entryPoints)===canonical(before[0].entryPoints),'BACKUP_BASELINE_ENTRYPOINTS_MISMATCH');
   const matches=(await api.versions()).filter(v=>v.description==='REC '+expected.sourceSha+' '+expected.tag);
   requireThat(matches.length===1 && Number.isInteger(matches[0].versionNumber) &&
     matches[0].versionNumber>before[0].version && matches[0].scriptId===policy.scriptId,'AMBIGUOUS_CREATED_VERSION');
@@ -50,5 +56,7 @@ export async function inspectPendingDeploy({api,store,policy,state,pending,expec
     canonical(await api.deployments())===canonical(state.deployments),'REMOTE_STATE_CHANGED');
   return {requestTag:expected.tag,classification,publishedVersion:published,createdVersion:created,
     previousVersion:before[0].version,publishedHash,expectedHash:expected.hash,
-    existingUrlUnchanged:true,backupVerified:true,readOnly:true};
+    existingUrlUnchanged:true,backupVerified:true,readOnly:true,
+    backupDeploymentCounts:{raw:b.deployments.length,versioned:backupVersioned.length,
+      unversioned:b.deployments.length-backupVersioned.length}};
 }
