@@ -28,6 +28,7 @@ export async function diagnose({api,store,policy,expectedHash=HASH,sourceSha=SOU
   requireThat(b.headHash===p.headBeforeHash && digest(deploymentState(b.deployments,policy))===digest(p.deploymentsBefore),'BACKUP_BASELINE_MISMATCH');
   // deploymentsBefore est un état normalisé dans le reçu, contre une liste brute dans la sauvegarde.
   return {status:'verified_read_only',version:1,files:5,versionHash:expectedHash,
+    deploymentHash:digest(d.deploymentId),operationHash:digest(p),
     headMatches:state.headHash===expectedHash,pending:TAG,backupVerified:true,
     deploymentIdConfigured:policy.deploymentId===d.deploymentId,reconciliationPerformed:false};
 }
