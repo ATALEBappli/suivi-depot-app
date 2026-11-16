@@ -47,3 +47,15 @@ test('workflow exclusivement manuel, main, environnement REC et aucune commande 
  assert.doesNotMatch(s,/cli\.mjs|REC_MUTATIONS_ENABLED|contents: write|id-token: write/);
  assert.match(s,/run: node scripts\/rec-automation\/diagnose-version.mjs/);
 });
+
+test('scriptId absent : diagnostic accepté uniquement avec provenance REST REC',async()=>{
+ const {rememberDeploymentProject}=await import('../../scripts/rec-automation/validation.mjs');
+ for(const proven of [false,true]) {
+  const f=fixture(),list=await f.api.deployments();delete list[0].deploymentConfig.scriptId;
+  if(proven)rememberDeploymentProject(list[0],policy.scriptId);
+  f.api.deployments=async()=>list;
+  if(proven)assert.equal((await diagnose(f)).backupVerified,true);
+  else await assert.rejects(()=>diagnose(f),/WRONG_DEPLOYMENT_TARGET/);
+  assert.deepEqual(f.writes,[]);
+ }
+});

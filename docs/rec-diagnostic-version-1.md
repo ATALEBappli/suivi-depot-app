@@ -18,9 +18,10 @@ version au SHA-256 validé et au schéma fermé de cinq fichiers, puis vérifie 
 pending unique et sa sauvegarde avec leur identité, cible et empreinte.
 Le rapport ne contient ni sources, ni URL, ni identifiant de déploiement, ni jeton.
 Tout échec arrête le diagnostic ; aucun mécanisme de repli ni réparation.
-Un refus WRONG_DEPLOYMENT_TARGET doit être investigué sur la réponse privée API :
-champ scriptId absent ou différent ne peuvent être confondus. Aucun assouplissement
-ni remplacement de valeur n'est effectué par ce diagnostic.
+Un scriptId explicitement différent, nul ou vide est refusé. Si le champ est absent,
+le diagnostic exige une provenance en mémoire attachée par le transport à l'objet
+retourné par GET projects/{REC_SCRIPT_ID}/deployments. Aucun champ de la réponse
+n'est remplacé ; une copie JSON perd cette preuve et reste refusée sans scriptId.
 
 ## Réconciliation proposée, non implémentée
 
@@ -72,3 +73,32 @@ ou DELETE. Le renouvellement OAuth, seul POST autorisé, ne modifie pas les ress
 La lecture est séquentielle, sans verrou Google : si une autre personne intervient,
 faire geler les modifications manuelles et recommencer le diagnostic ; aucun rapport
 ne constitue une autorisation de réconciliation ou de déploiement.
+
+## Structure REST et contrôle d’appartenance
+
+Sources publiques consultées, sans appel aux API de ressources Google :
+- https://developers.google.com/apps-script/api/reference/rest/v1/projects.deployments#DeploymentConfig
+- https://developers.google.com/apps-script/api/reference/rest/v1/projects.deployments/list
+
+Deployment contient deploymentId, deploymentConfig, updateTime et entryPoints.
+DeploymentConfig décrit scriptId, versionNumber, manifestFileName et description.
+La référence ne garantit pas explicitement la présence de chaque champ dans chaque
+réponse : une omission doit être traitée sans supposer un mauvais projet, mais
+ne constitue jamais à elle seule une preuve d’appartenance. Aucun retour réel
+n’a été interrogé pour établir la cause exacte de l’échec initial.
+
+La route list sélectionne explicitement le projet. Le client construit cette route
+avec la cible dont l’empreinte REC a été validée avant OAuth, en HTTPS et sans
+redirection. Le diagnostic vérifie aussi projects.get (ID et titre), les droits
+et propriétaires, puis content?versionNumber=1 (scriptId et empreinte des cinq
+fichiers). Chaque objet issu de list reçoit une provenance WeakMap privée au
+module de validation, non incluse dans les sauvegardes ou logs. Le validateur
+exige soit le champ exact, soit cette provenance si le champ manque ; une
+provenance contradictoire est toujours refusée. Version, identifiant, point
+d’entrée WEB_APP unique et accès MYSELF / USER_DEPLOYING restent contrôlés.
+
+Le changement ne marque que les réponses list en lecture seule. Les réponses
+create/update sans scriptId et les sauvegardes JSON sans scriptId restent refusées :
+la présente PR ne corrige pas les chemins de mutation et n’autorise aucune reprise.
+Les états comparés en mémoire utilisent la provenance comme ID de projet afin
+d’éviter une valeur undefined lors du calcul canonique. Le JSON brut est conservé.
