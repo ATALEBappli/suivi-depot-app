@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {inspectPendingDeploy,RECOVERY} from './inspect-pending-deploy.mjs';
 import {TARGET,Refusal,requireThat,digest,isHash,isTag,canonical,contentOf,contentHash,
   privateManifest,candidateOf,checkIdentity,checkFile,checkDeployment,deploymentState} from './validation.mjs';
 
@@ -59,7 +60,11 @@ export async function operate({request,api,store,policy,now=()=>new Date().toISO
   requireThat(['inspect','install','deploy','restore'].includes(request.operation),'INVALID_OPERATION');
   const state=await inspect({api,policy});
   const pending=await store.pending();
-  if(request.operation==='inspect')return summary(state,pending);
+  if(request.operation==='inspect') {
+    const result=summary(state,pending);
+    if(pending.some(p=>p.value.tag===RECOVERY.tag))result.deploymentRecovery=await inspectPendingDeploy({api,store,policy,state,pending});
+    return result;
+  }
   requireThat(isTag(request.requestTag),'INVALID_REQUEST_TAG');
   const candidate=['install','deploy'].includes(request.operation)?candidateOf(request.candidate):null;
   const intent={operation:request.operation,sourceHash:candidate?.contentHash || null,

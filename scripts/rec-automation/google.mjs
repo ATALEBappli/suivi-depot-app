@@ -56,6 +56,16 @@ export class Google {
   }
   updateContent(content){return this.request('PUT',this.projectUrl()+'/content',content);}
   createVersion(description){return this.request('POST',this.projectUrl()+'/versions',{description});}
+  async versions() {
+    const all=[];let token;
+    for(let page=0;page<5;page++) {
+      const q=new URLSearchParams({pageSize:'50'});if(token)q.set('pageToken',token);
+      const data=await this.request('GET',this.projectUrl()+'/versions?'+q);
+      requireThat(!data.versions || Array.isArray(data.versions),'INVALID_VERSIONS');all.push(...(data.versions || []));
+      if(!data.nextPageToken)return all;token=data.nextPageToken;
+    }
+    throw new Refusal('TOO_MANY_VERSIONS');
+  }
   async deployments() {
     const all=[];let token;
     for(let page=0;page<5;page++) {

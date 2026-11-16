@@ -159,3 +159,8 @@ test('mise à jour de la même URL : réponse sans scriptId liée à la route RE
   assert.equal(calls.filter(c=>c.method==='POST' && c.url.includes('script.googleapis.com')).length,0);
  }
 });
+test('liste des versions : GET limité au projet REC et pagination bornée',async()=>{
+ const calls=[];const api=new Google({policy,fetcher:async(url,options)=>{calls.push({url,method:options.method});return response(url==='https://oauth2.googleapis.com/token'?token:{versions:[],nextPageToken:'fictif'});}});
+ await api.authenticate(credentials);await assert.rejects(()=>api.versions(),/TOO_MANY_VERSIONS/);
+ assert.equal(calls.length,6);for(const c of calls.slice(1)){assert.equal(c.method,'GET');assert.ok(c.url.startsWith('https://script.googleapis.com/v1/projects/'+policy.scriptId+'/versions?'));}
+});
