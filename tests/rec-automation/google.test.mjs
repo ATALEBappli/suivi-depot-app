@@ -114,3 +114,34 @@ test('Drive : références injectant une requête interdites',async()=>{
  const d=drive();await d.api.authenticate(credentials);const n=d.calls.length;
  await refuses(()=>d.store.read('backup',"' or trashed=false"),'INVALID_PRIVATE_REFERENCE');assert.equal(d.calls.length,n);
 });
+
+test('réponses REST : scriptId présent, absent ou différent ; provenance non sérialisable',async()=>{
+ const {checkDeployment,deploymentState}=await import('../../scripts/rec-automation/validation.mjs');
+ const {deployment}=await import('./helpers.mjs');
+ for(const field of ['present','absent','different','null']) {
+  const d=deployment();
+  if(field==='absent')delete d.deploymentConfig.scriptId;
+  if(field==='different')d.deploymentConfig.scriptId='SCRIPT_PROD_FICTIF_1234567890';
+  if(field==='null')d.deploymentConfig.scriptId=null;
+  const calls=[];
+  const api=new Google({policy,fetcher:async(url,options)=>{calls.push({url,method:options.method});return response(url==='https://oauth2.googleapis.com/token'?token:{deployments:[d]});}});
+  await api.authenticate(credentials);const [got]=await api.deployments();
+  assert.equal(calls[1].url.startsWith('https://script.googleapis.com/v1/projects/'+policy.scriptId+'/deployments?'),true);
+  assert.equal(calls[1].method,'GET');
+  if(field==='different'||field==='null')assert.throws(()=>checkDeployment(got,policy,1),/WRONG_DEPLOYMENT_TARGET/);
+  else {
+   checkDeployment(got,policy,1);
+   assert.equal(deploymentState([got],policy)[0].scriptId,policy.scriptId);
+   if(field==='absent')assert.throws(()=>checkDeployment(clone(got),policy,1),/WRONG_DEPLOYMENT_TARGET/);
+  }
+ }
+});
+test('provenance contradictoire et permissions publiques restent refusées',async()=>{
+ const {checkDeployment,rememberDeploymentProject}=await import('../../scripts/rec-automation/validation.mjs');
+ const {deployment}=await import('./helpers.mjs');
+ const d=deployment();rememberDeploymentProject(d,'SCRIPT_PROD_FICTIF_1234567890');
+ assert.throws(()=>checkDeployment(d,policy,1),/WRONG_DEPLOYMENT_TARGET/);
+ const p=deployment();delete p.deploymentConfig.scriptId;rememberDeploymentProject(p,policy.scriptId);
+ p.entryPoints[0].webApp.entryPointConfig.access='ANYONE_ANONYMOUS';
+ assert.throws(()=>checkDeployment(p,policy,1),/PUBLIC_DEPLOYMENT_REFUSED/);
+});

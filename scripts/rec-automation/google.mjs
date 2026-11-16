@@ -1,4 +1,4 @@
-import {Refusal,requireThat,isTag,isHash,checkFile,canonical,digest} from './validation.mjs';
+import {Refusal,requireThat,isTag,isHash,checkFile,canonical,digest,rememberDeploymentProject} from './validation.mjs';
 
 export const SCOPES=Object.freeze([
   'openid','https://www.googleapis.com/auth/userinfo.email',
@@ -61,7 +61,7 @@ export class Google {
     for(let page=0;page<5;page++) {
       const q=new URLSearchParams({pageSize:'50'});if(token)q.set('pageToken',token);
       const data=await this.request('GET',this.projectUrl()+'/deployments?'+q);
-      requireThat(!data.deployments || Array.isArray(data.deployments),'INVALID_DEPLOYMENTS');all.push(...(data.deployments || []));
+      requireThat(!data.deployments || Array.isArray(data.deployments),'INVALID_DEPLOYMENTS');all.push(...(data.deployments || []).map(d=>rememberDeploymentProject(d,this.policy.scriptId)));
       if(!data.nextPageToken)return all;token=data.nextPageToken;
     }
     throw new Refusal('TOO_MANY_DEPLOYMENTS');

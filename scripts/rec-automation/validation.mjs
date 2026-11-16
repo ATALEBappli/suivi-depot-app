@@ -78,8 +78,19 @@ export function checkFile(file, {owner, allowed, mime, editor, privateOnly=false
   if(editor)requireThat(file.permissions.some(p=>p.emailAddress===editor && ['owner','writer'].includes(p.role)),'ACCOUNT_NOT_EDITOR');
   if(privateOnly)requireThat(file.permissions.length===1 && file.permissions[0].role==='owner' && file.permissions[0].emailAddress===owner,'BACKUP_NOT_PRIVATE');
 }
+// Provenance non sérialisable : seuls les objets reçus sur une route projet
+// contrôlée sont marqués par le transport. Un JSON/backup ne porte pas cette preuve.
+const deploymentProjects=new WeakMap();
+export function rememberDeploymentProject(deployment,scriptId) {
+  requireThat(deployment && typeof deployment==='object','INVALID_DEPLOYMENTS');
+  deploymentProjects.set(deployment,scriptId);return deployment;
+}
 export function checkDeployment(deployment, policy, expectedVersion) {
-  requireThat(deployment?.deploymentConfig?.scriptId===policy.scriptId,'WRONG_DEPLOYMENT_TARGET');
+  const config=deployment?.deploymentConfig;
+  const scope=deployment && deploymentProjects.get(deployment);
+  requireThat(config && (Object.hasOwn(config,'scriptId')?
+    config.scriptId===policy.scriptId:scope===policy.scriptId),'WRONG_DEPLOYMENT_TARGET');
+  requireThat(!scope || scope===policy.scriptId,'WRONG_DEPLOYMENT_TARGET');
   requireThat(Number.isInteger(deployment.deploymentConfig.versionNumber) && deployment.deploymentConfig.versionNumber>0,'INVALID_DEPLOYMENT_VERSION');
   if(expectedVersion!==undefined)requireThat(deployment.deploymentConfig.versionNumber===expectedVersion,'WRONG_DEPLOYMENT_VERSION');
   requireThat(typeof deployment.deploymentId==='string' && id(deployment.deploymentId),'INVALID_DEPLOYMENT_ID');
@@ -94,5 +105,5 @@ export function deploymentState(deployments, policy, {inspect=false}={}) {
   if(!inspect)for(const d of versioned)checkDeployment(d,policy);
   // Noms/URLs de déploiement ne sont pas nécessaires dans les résumés publics.
   return versioned.map(d=>({id:d.deploymentId,version:d.deploymentConfig?.versionNumber,
-    entryPoints:d.entryPoints,scriptId:d.deploymentConfig?.scriptId})).sort((a,b)=>String(a.id).localeCompare(String(b.id),'en'));
+    entryPoints:d.entryPoints,scriptId:d.deploymentConfig?.scriptId ?? deploymentProjects.get(d) ?? null})).sort((a,b)=>String(a.id).localeCompare(String(b.id),'en'));
 }
