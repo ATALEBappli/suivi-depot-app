@@ -28,7 +28,7 @@ test('token expiré refusé avant requête',async()=>{
  api.expiresAt=Date.now();await refuses(()=>api.project(),'OAUTH_TOKEN_EXPIRED');assert.equal(count,1);
 });
 test('API de gestion : cible fixe, pas de Sheets ni scripts.run',async()=>{
- const calls=[];const api=new Google({policy:{...policy,deploymentId:'DEPLOY_REC_FICTIF_1234567890'},fetcher:async(url,options)=>{calls.push({url,options});return response(url.includes('oauth2.googleapis.com')?token:{deployments:[]});}});
+ const calls=[];const api=new Google({policy:{...policy,deploymentId:'DEPLOY_REC_FICTIF_1234567890'},fetcher:async(url,options)=>{calls.push({url,options});return response(url.includes('oauth2.googleapis.com')?token:options.method==='PUT' && url.includes('/deployments/')?{deploymentId:'DEPLOY_REC_FICTIF_1234567890'}:{deployments:[]});}});
  await api.authenticate(credentials);await api.project();await api.getContent();await api.getContent(3);
  await api.updateContent({files:[]});await api.createVersion('REC fictif');await api.createDeployment(3,'REC fictif');await api.updateDeployment(api.policy.deploymentId,3,'REC fictif');await api.deployments();
  for(const call of calls.filter(c=>c.url.startsWith('https://script.googleapis.com/'))) {
@@ -144,4 +144,18 @@ test('provenance contradictoire et permissions publiques restent refusées',asyn
  const p=deployment();delete p.deploymentConfig.scriptId;rememberDeploymentProject(p,policy.scriptId);
  p.entryPoints[0].webApp.entryPointConfig.access='ANYONE_ANONYMOUS';
  assert.throws(()=>checkDeployment(p,policy,1),/PUBLIC_DEPLOYMENT_REFUSED/);
+});
+test('mise à jour de la même URL : réponse sans scriptId liée à la route REC, mauvais ID refusé',async()=>{
+ const {deployment}=await import('./helpers.mjs');const {checkDeployment}=await import('../../scripts/rec-automation/validation.mjs');
+ for(const mode of ['absent','present','different','otherId']) {
+  const d=deployment(2);if(mode==='absent')delete d.deploymentConfig.scriptId;
+  if(mode==='different')d.deploymentConfig.scriptId='SCRIPT_PROD_FICTIF_1234567890';
+  if(mode==='otherId')d.deploymentId='OTHER_DEPLOY_FICTIF_1234567890';
+  const calls=[],api=new Google({policy:{...policy,deploymentId:'DEPLOY_REC_FICTIF_1234567890'},fetcher:async(url,options)=>{calls.push({url,method:options.method});return response(url==='https://oauth2.googleapis.com/token'?token:d);}});
+  await api.authenticate(credentials);
+  if(mode==='otherId')await assert.rejects(()=>api.updateDeployment(api.policy.deploymentId,2,'REC fictif'),/UNEXPECTED_DEPLOYMENT_ID/);
+  else {const result=await api.updateDeployment(api.policy.deploymentId,2,'REC fictif');if(mode==='different')assert.throws(()=>checkDeployment(result,policy,2),/WRONG_DEPLOYMENT_TARGET/);else checkDeployment(result,policy,2);}
+  assert.equal(calls[1].method,'PUT');assert.ok(calls[1].url.endsWith('/deployments/DEPLOY_REC_FICTIF_1234567890'));
+  assert.equal(calls.filter(c=>c.method==='POST' && c.url.includes('script.googleapis.com')).length,0);
+ }
 });

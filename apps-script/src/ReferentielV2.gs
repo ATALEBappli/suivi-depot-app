@@ -7,7 +7,39 @@ var ReferentielV2 = (() => {
   const empty = () => Object.fromEntries(entities.map(k => [k, []]));
   function text(x, required = true) {
     if (typeof x !== 'string' || x.length > 2000 || (required && !x.trim()) || /^[\s\u0000-\u001f]*[=+@-]/.test(x) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(x)) fail('INVALID_TEXT');
-    return x;
+    return x.trim().replace(/\s+/g,' ');
+  }
+  const key = x => text(x).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const numero = x => {const n=text(x).toUpperCase();return /^\d+$/.test(n)?n.replace(/^0+(?=\d)/,'').padStart(2,'0'):n;};
+  const type = x => text(x).replace(/^f\s*(\d+)$/i,(_,n)=>'F'+Number(n)).replace(/^local$/i,'Local');
+  function etage(x) {
+    const v=text(x,false),k=v.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[ ._-]/g,'');
+    if(['rdc','rezdechaussee','rezdechausse'].includes(k))return 'RDC';
+    if(['toit','terrasse'].includes(k))return 'Toit';
+    const n=k.match(/^(\d+)(?:er|ere|e|eme)?(?:etage)?$/);
+    return n?Number(n[1])+(Number(n[1])===1?'er étage':'e étage'):v;
+  }
+  const nom = (x,preserve=false) => {const v=text(x);return preserve?v:v.toLocaleLowerCase('fr').replace(/(^|[\s'’\-])(\p{L})/gu,(_,sep,c)=>sep+c.toLocaleUpperCase('fr'));};
+  const defaults={types:['F2','F3','F4','Local'],etages:['RDC','1er étage','2e étage','3e étage','Toit']};
+  function references(s) {
+    const out={};
+    for(const category of ['types','etages']) {
+      const normal=category==='types'?type:etage;
+      const labels=defaults[category];
+      out[category]=[...new Set(labels)].map(label=>({id:category+':'+key(label),label,actif:true}));
+      for(const h of s.historique.filter(h=>h.entity==='references' && h.apres.category===category)) {
+        const i=out[category].findIndex(r=>r.id===h.entityId);
+        const row={id:h.entityId,label:h.apres.label,actif:h.apres.actif};
+        if(i<0)out[category].push(row);else out[category][i]=row;
+      }
+      for(const l of s.logements){const label=normal(l[category==='types'?'type':'etage']);if(label && !out[category].some(r=>key(r.label)===key(label)))out[category].push({id:category+':'+key(label),label,actif:true});}
+    }
+    return out;
+  }
+  function allowedReference(s,category,value,previous) {
+    if(!value && category==='etages')return;
+    if(previous!==undefined && key(value)===key(previous))return;
+    if(!references(s)[category].some(r=>r.actif && key(r.label)===key(value)))fail('INACTIVE_OR_UNKNOWN_REFERENCE');
   }
   function date(x) {
     if (x === null || x === '') return null;
@@ -37,9 +69,9 @@ var ReferentielV2 = (() => {
     const nums = new Set();
     s.logements.forEach(r => {
       object(r,['id','numero','type','etage','actif']); text(r.numero);text(r.type);text(r.etage,false);
-      if (r.numero !== r.numero.trim() || nums.has(r.numero) || typeof r.actif !== 'boolean') fail('INVALID_LOGEMENT'); nums.add(r.numero);
+      if (r.numero !== r.numero.trim() || nums.has(numero(r.numero)) || typeof r.actif !== 'boolean') fail('INVALID_LOGEMENT'); nums.add(numero(r.numero));
     });
-    s.locataires.forEach(r => {object(r,['id','nom','complement']);text(r.nom);text(r.complement,false);});
+    s.locataires.forEach(r => {object(r,['id','nom','complement','cassePersonnalisee']);text(r.nom);text(r.complement,false);});
     s.baux.forEach(b => {
       object(b,['id','logementId','locataireId','arrivee','depart','suiviFinancierDepuis','statut','cautionPrevue','devise']);
       find(s,'logements',b.logementId);find(s,'locataires',b.locataireId);
@@ -81,14 +113,30 @@ var ReferentielV2 = (() => {
     const s=copy(state), d=command.data;
     text(ctx.actor);text(ctx.now);const id=()=>ctx.id();
     let entity, before=null, after;
+    if(command.action==='reference') {
+      object(d,['id','category','label','actif']);
+      if(!['types','etages'].includes(d.category) || typeof d.actif!=='boolean')fail('INVALID_REFERENCE');
+      const normal=d.category==='types'?type:etage,label=normal(d.label);text(label);
+      const rows=references(s)[d.category],previous=d.id?rows.find(r=>r.id===d.id):null;
+      if(d.id && !previous)fail('NOT_FOUND');
+      if(rows.some(r=>r.id!==d.id && key(r.label)===key(label)))fail('DUPLICATE_REFERENCE');
+      if(previous && key(label)!==key(previous.label) && s.logements.some(l=>key(normal(l[d.category==='types'?'type':'etage']))===key(previous.label)))fail('REFERENCE_IN_USE');
+      const refId=previous?.id || id();
+      s.historique.push({id:id(),entity:'references',entityId:refId,avant:previous,apres:{category:d.category,label,actif:d.actif},auteur:ctx.actor,date:ctx.now});
+      return validate(s);
+    }
     switch(command.action) {
       case 'logement':
         object(d,['id','numero','type','etage','actif']);
         entity='logements';if(d.id)before=copy(find(s,entity,d.id));
-        after={id:d.id || id(),numero:text(d.numero),type:text(d.type),etage:text(d.etage ?? '',false),actif:d.actif};break;
+        after={id:d.id || id(),numero:numero(d.numero),type:type(d.type),etage:etage(d.etage ?? ''),actif:d.actif};
+        allowedReference(s,'types',after.type,before?.type);allowedReference(s,'etages',after.etage,before?.etage);break;
       case 'locataire':
-        object(d,['id','nom','complement']);entity='locataires';if(d.id)before=copy(find(s,entity,d.id));
-        after={id:d.id || id(),nom:text(d.nom),complement:text(d.complement ?? '',false)};break;
+        object(d,['id','nom','complement','cassePersonnalisee']);entity='locataires';if(d.id)before=copy(find(s,entity,d.id));
+        if(d.cassePersonnalisee!==undefined && typeof d.cassePersonnalisee!=='boolean')fail('INVALID_FIELDS');
+        after={id:d.id || id(),nom:nom(d.nom,d.cassePersonnalisee===true),complement:text(d.complement ?? '',false)};
+        if(d.cassePersonnalisee)after.cassePersonnalisee=true;
+        if(s.locataires.some(t=>t.id!==after.id && key(t.nom)===key(after.nom)))fail('DUPLICATE_TENANT');break;
       case 'bail':
         object(d,['id','logementId','locataireId','arrivee','depart','suiviFinancierDepuis','statut','cautionPrevue','loyer']);entity='baux';
         if(d.id) {
@@ -111,12 +159,12 @@ var ReferentielV2 = (() => {
     return validate(s);
   }
   function normalize(rows) {
-    if(!Array.isArray(rows) || rows.length>5000)fail('INVALID_IMPORT');
+    if(!Array.isArray(rows) || !rows.length || rows.length>5000)fail('INVALID_IMPORT');
     const nums=new Set();
     return rows.map(r=>{
       object(r,['num','type','etage','locataire','loyer']);text(r.num);text(r.type);text(r.etage,false);text(r.locataire);
-      if(r.num!==r.num.trim() || nums.has(r.num))fail('DUPLICATE_NUMBER');nums.add(r.num);
-      return {num:r.num,type:r.type,etage:r.etage,locataire:r.locataire,loyer:amount(r.loyer)};
+      const num=numero(r.num);if(nums.has(num))fail('DUPLICATE_NUMBER');nums.add(num);
+      return {num,type:type(r.type),etage:etage(r.etage),locataire:nom(r.locataire),loyer:amount(r.loyer)};
     }).sort((a,b)=>a.num.localeCompare(b.num));
   }
   // Identité déterministe du contenu ; ce n'est pas une signature d'autorisation.
@@ -124,20 +172,21 @@ var ReferentielV2 = (() => {
   function simulate(s,rows,at) {
     validate(s);const source=normalize(rows);
     const items=source.map(r=>{
-      const l=s.logements.find(l=>l.numero===r.num);
-      if(!l)return {num:r.num,decision:'creation'};
+      const l=s.logements.find(l=>numero(l.numero)===r.num);
+      if(!l){allowedReference(s,'types',r.type);allowedReference(s,'etages',r.etage);return {...r,decision:s.locataires.filter(t=>key(t.nom)===key(r.locataire)).length>1?'conflit':'creation'};}
       const b=s.baux.find(b=>b.logementId===l.id && (!b.arrivee || b.arrivee<=at) && (!b.depart || at<b.depart));
-      const same=l.actif && l.type===r.type && l.etage===r.etage && b && find(s,'locataires',b.locataireId).nom===r.locataire && rent(s,b.id,at)===r.loyer;
-      return {num:r.num,decision:same?'identique':'conflit'};
+      const same=l.actif && type(l.type)===r.type && etage(l.etage)===r.etage && b && key(find(s,'locataires',b.locataireId).nom)===key(r.locataire) && rent(s,b.id,at)===r.loyer;
+      return {...r,decision:same?'identique':'conflit'};
     });
-    return {total:source.length,creations:items.filter(i=>i.decision==='creation').length,identiques:items.filter(i=>i.decision==='identique').length,conflits:items.filter(i=>i.decision==='conflit').length,transactionsCreees:0,items};
+    return {total:source.length,creations:items.filter(i=>i.decision==='creation').length,identiques:items.filter(i=>i.decision==='identique').length,conflits:items.filter(i=>i.decision==='conflit').length,misesAJour:0,ignorees:items.filter(i=>i.decision==='identique').length,totalMensuel:source.reduce((n,r)=>n+Math.round(r.loyer*100),0)/100,transactionsCreees:0,items};
   }
   function importRows(state,rows,ctx) {
     const report=simulate(state,rows,ctx.today || ctx.now.slice(0,10));if(report.conflits)fail('IMPORT_CONFLICT');let s=copy(state);
     for(const r of normalize(rows)) {
-      if(s.logements.some(l=>l.numero===r.num))continue;
+      if(s.logements.some(l=>numero(l.numero)===r.num))continue;
       s=apply(s,{action:'logement',data:{numero:r.num,type:r.type,etage:r.etage,actif:true}},ctx);const l=s.logements.at(-1);
-      s=apply(s,{action:'locataire',data:{nom:r.locataire}},ctx);const t=s.locataires.at(-1);
+      const matches=s.locataires.filter(t=>key(t.nom)===key(r.locataire));if(matches.length>1)fail('AMBIGUOUS_TENANT');
+      let t=matches[0];if(!t){s=apply(s,{action:'locataire',data:{nom:r.locataire}},ctx);t=s.locataires.at(-1);}
       s=apply(s,{action:'bail',data:{logementId:l.id,locataireId:t.id,statut:'actif',loyer:r.loyer}},ctx);
     }
     if(report.creations)s.imports.push({id:ctx.id(),source:fingerprint(rows),date:ctx.now,auteur:ctx.actor,rapport:report});
@@ -149,5 +198,5 @@ var ReferentielV2 = (() => {
     for(const k of entities){if(!Array.isArray(patch[k]))fail('INVALID_PATCH');for(const row of patch[k]){const i=next[k].findIndex(r=>r.id===row.id);if(i<0)next[k].push(row);else next[k][i]=row;}}
     return validate(next);
   }
-  return {empty,validate,apply,legacy,rent,financial,normalize,fingerprint,simulate,importRows,delta,replay};
+  return {normalizers:{numero,type,etage,nom},references,empty,validate,apply,legacy,rent,financial,normalize,fingerprint,simulate,importRows,delta,replay};
 })();

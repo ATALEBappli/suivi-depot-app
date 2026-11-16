@@ -18,6 +18,14 @@ export function packageCommit(sha, git=(...args)=>execFileSync('git',args,{encod
   const style='<link rel="stylesheet" href="referentiel-v2.css">',script='<script src="referentiel-v2.js"></script>';
   requireThat(html.split(style).length===2 && html.split(script).length===2,'UNEXPECTED_HTML_TEMPLATE');
   html=html.replace(style,()=>'<style>'+css+'</style>').replace(script,()=>'<script>'+js+'</script>');
+  for(const [asset,path] of [['referentiel-v2-model.js','apps-script/src/ReferentielV2.gs'],['referentiel-v2-import.js','referentiel-v2-import.js']]) {
+    const tag='<script src="'+asset+'"></script>';
+    if(html.includes(tag)) {
+      requireThat(html.split(tag).length===2,'UNEXPECTED_HTML_TEMPLATE');
+      const source=read(path);new vm.Script(source);requireThat(!/<\/script/i.test(source),'UNSAFE_INLINE_ASSET');
+      html=html.replace(tag,()=>'<script>'+source+'</script>');
+    }
+  }
   requireThat(!/<script[^>]+src=|<link[^>]+href=/i.test(html),'EXTERNAL_ASSETS');
   files.push({name:'ParametrageV2',type:'HTML',source:html},{name:'appsscript',type:'JSON',source:read('apps-script/src/appsscript.json')});
   const candidate={schema:1,sourceSha:sha,files,contentHash:contentHash({files})};

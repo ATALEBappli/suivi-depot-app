@@ -2,7 +2,7 @@ import {createServer} from 'node:http';
 import {readFileSync} from 'node:fs';
 import {runtime} from './v2-local-runtime.mjs';
 const r=runtime();
-const allowed={'/':['referentiel-v2.html','text/html; charset=utf-8'],'/referentiel-v2.css':['referentiel-v2.css','text/css'],'/referentiel-v2.js':['referentiel-v2.js','text/javascript']};
+const allowed={'/referentiel-v2-model.js':['apps-script/src/ReferentielV2.gs','text/javascript'],'/referentiel-v2-import.js':['referentiel-v2-import.js','text/javascript'],'/':['referentiel-v2.html','text/html; charset=utf-8'],'/referentiel-v2.css':['referentiel-v2.css','text/css'],'/referentiel-v2.js':['referentiel-v2.js','text/javascript']};
 const port=Number(process.env.V2_PORT || 4175);
 createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');

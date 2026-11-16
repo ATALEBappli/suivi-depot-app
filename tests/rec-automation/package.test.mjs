@@ -79,3 +79,11 @@ test('gates explicites : mutations autorisées seulement après activation sépa
  for(const operation of ['install','deploy','restore'])assert.doesNotThrow(()=>executionGate({REC_AUTOMATION_ENABLED:'true',REC_MUTATIONS_ENABLED:'true',REC_OPERATION:operation}));
  assert.throws(()=>executionGate({REC_AUTOMATION_ENABLED:'false',REC_MUTATIONS_ENABLED:'true',REC_OPERATION:'install'}),/AUTOMATION_DISABLED/);
 });
+test('nouvelle interface : modèle commun et lecteur Excel intégrés, toujours cinq fichiers',()=>{
+ const c=packageCommit(sha,source({
+  'referentiel-v2.html':'<html><link rel="stylesheet" href="referentiel-v2.css"><script src="referentiel-v2-model.js"></script><script src="referentiel-v2-import.js"></script><script src="referentiel-v2.js"></script></html>',
+  'referentiel-v2-import.js':'var V2Import={read:async()=>[]};'
+ }));
+ const html=c.files.find(f=>f.name==='ParametrageV2').source;
+ assert.equal(c.files.length,5);assert.ok(html.includes('var Modele'));assert.ok(html.includes('var V2Import'));assert.doesNotMatch(html,/<script[^>]+src=/);
+});

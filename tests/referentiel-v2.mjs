@@ -103,4 +103,25 @@ test('interface privée et identité du serveur, aucun appel public sans propri�
  const r=runtime();r.setActor('');assert.equal(r.get({action:'v2.ui'}).error,'FORBIDDEN');
  assert.equal(r.api.v2Client({action:'v2.read'}).error,'FORBIDDEN');
 });
+
+test('modifications V2 relues par le contrat historique sans réécriture des transactions',()=>{
+ const r=runtime(), before=structuredClone(r.tables);
+ const preview=r.get({action:'v2.simulate',rows:JSON.stringify(rows)}).preview;
+ assert.equal(r.post({...request,preview}).ok,true);
+ let revision=1, seq=0;
+ const edit=(action,data)=>assert.equal(r.post({action:'v2.write',requestId:`compatibility-${++seq}`,expectedRevision:revision++,command:{action,data}}).ok,true);
+ const loaded=r.get({action:'v2.read'}).state;
+ const housing=loaded.logements[0], tenant=loaded.locataires[0], lease=loaded.baux[0];
+ edit('logement',{...housing,type:'F2',etage:'Toit'});
+ edit('locataire',{...tenant,nom:'Locataire fictif corrigé',complement:'Fictif'});
+ edit('bail',bailData(lease,{arrivee:'2020-01-01',suiviFinancierDepuis:'2026-11-01'}));
+ const result=r.get({action:'config',what:'all'});
+ assert.equal(result.referentielV2,true);
+ assert.deepEqual(result.config.logements[0],{num:housing.numero,type:'F2',locataire:'Locataire Fictif Corrigé',loyer:25000});
+ assert.equal(r.get({}).rows.length,before.transactions.length-1);
+ for(const key of ['transactions','config_logements','config_locaux','config_hedam'])assert.deepEqual(r.tables[key],before[key]);
+ assert.equal(r.post({type:'Entrée',date:'2026-11-14',montant:1,description:'Encaissement fictif de test'}).ok,true);
+ assert.equal(r.tables.transactions.length,before.transactions.length+1);
+ assert.deepEqual(r.tables.transactions.slice(0,-1),before.transactions);
+});
 console.log(`${count} scénarios US-015 réussis, aucun réseau.`);

@@ -27,6 +27,7 @@ jobs:
         run: |
           node tests/referentiel-v2.mjs
           node tests/import-referentiel-v2.mjs
+          node tests/referentiel-v2-ergonomie.mjs
           node scripts/check-apps-script.mjs
           node tests/rec-synchronisation.mjs
           node tests/isolation.mjs
