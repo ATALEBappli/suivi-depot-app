@@ -17,10 +17,10 @@ export function identity(token,jwks,{clientId,nonce,allowed,now=Date.now()}) {
  const user=allowed.find(u=>u.sub===p.sub && u.email===p.email.toLowerCase());requireThat(user,'ACCOUNT_NOT_ALLOWED');return {...user};
 }
 export function allowlist(value){const users=JSON.parse(value || '[]');requireThat(Array.isArray(users) && users.length<=20 && users.every(u=>typeof u.email==='string' && u.email===u.email.toLowerCase() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email) && typeof u.sub==='string' && /^[A-Za-z0-9_-]{1,150}$/.test(u.sub) && ['reader','admin'].includes(u.role)) && new Set(users.map(u=>u.sub)).size===users.length,'INVALID_ALLOWLIST');return users;}
-export function config(env) {
+export function config(env,{hosting='cloud-run'}={}) {
  requireThat(env.APP_ENV==='REC','REC_ONLY');
  const base=new URL(env.REC_SERVER_URL),front=new URL(base.origin+'/');
- requireThat(base.protocol==='https:' && base.hostname.endsWith('.run.app') && !base.port && base.pathname==='/' && !base.search && !base.hash && !base.username && !base.password,'INVALID_SERVER_URL');
+ requireThat(base.protocol==='https:' && (hosting==='cloudflare' ? /^[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(base.hostname) : hosting==='cloud-run' && base.hostname.endsWith('.run.app')) && !base.port && base.pathname==='/' && !base.search && !base.hash && !base.username && !base.password,'INVALID_SERVER_URL');
  const endpoint=new URL(env.REC_APPS_SCRIPT_URL);
  const match=endpoint.href.match(/^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
  requireThat(match && hex(match[1])===pins.deployment,'WRONG_DEPLOYMENT_TARGET');
