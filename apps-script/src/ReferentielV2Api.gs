@@ -26,6 +26,7 @@ function _v2Load_() {
 var _recVerifiedActor_=null;
 function _v2Actor_() {
   if(_recVerifiedActor_)return _recVerifiedActor_.email;
+  if(REC_SIGNED_TRANSPORT)throw new Error('FORBIDDEN');
   const actor=Session.getActiveUser().getEmail();
   const owner=PropertiesService.getScriptProperties().getProperty('V2_ADMIN_EMAIL');
   if(!owner || !actor || actor!==owner)throw new Error('FORBIDDEN');return actor;
@@ -116,9 +117,9 @@ function _recGateway_(body) {
     } finally {lock.releaseLock();}
     verified=true;
     const response=action==='rec.status'?{ok:true,environment:'REC',scriptHash,sheetHash,active:_v2Enabled_(),canWrite:_v2Enabled_() && user.role==='admin'}:v2Client(request.request);
-    const payload=JSON.stringify({nonce:request.nonce,response});return _json({payload,mac:_recMac_(payload,key)});
+    const payload=JSON.stringify({nonce:request.nonce,response});return _json_({payload,mac:_recMac_(payload,key)});
   }catch {
-    if(verified){const payload=JSON.stringify({nonce:request.nonce,response:{ok:false,error:'REC_REQUEST_FAILED'}});return _json({payload,mac:_recMac_(payload,key)});}
-    return _json({ok:false,error:'FORBIDDEN'});
+    if(verified){const payload=JSON.stringify({nonce:request.nonce,response:{ok:false,error:'REC_REQUEST_FAILED'}});return _json_({payload,mac:_recMac_(payload,key)});}
+    return _json_({ok:false,error:'FORBIDDEN'});
   }finally{_recVerifiedActor_=null;}
 }

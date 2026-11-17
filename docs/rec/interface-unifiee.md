@@ -5,7 +5,7 @@
 | Ressource | Source et branche de travail | État / responsabilité |
 |---|---|---|
 | Backend, modèle et orchestration | ATALEBappli/suivi-depot-app, feature/rec-unified-secure-access vers main | Apps Script US-015, mêmes cinq fichiers, tests, passerelle Node 24 et export du référentiel |
-| Interface actuellement visée | ATALEBappli/suivi-depot-demo, feature/rec-us015-secure-parametrage vers main | Pages statiques à la racine ; Synthèse existante et Paramétrage intégré |
+| Interface actuellement visée | ATALEBappli/suivi-depot-demo, feature/rec-us015-secure-parametrage vers main | Même interface servie par Cloud Run ; Pages devient une redirection publique |
 | Export demo/ dans suivi-depot-app | ancien prototype, scripts/prepare-demo-pages.mjs | Différent du dépôt demo actuel : ne pas l'utiliser pour écraser finance-view/model/data |
 | Google | projet SuiviDepotAPI-REC, classeur Suivi Dépôt REC | Cibles figées par empreintes ; hébergement/exécution Gmail REC |
 | Identité de recette | compte Google associé à Hotmail | Principal autorisé par email ET sub Google, pas par le PIN fictif |
@@ -30,12 +30,14 @@ Pages ne peut conserver de secret ni utiliser la session Gmail de MYSELF à la
 place de Hotmail. JSONP anonyme et ouverture directe du déploiement ne constituent
 pas une authentification. Un iframe vers MYSELF échouerait également.
 
-La page Paramétrage charge les formulaires US-015 dans un iframe de même origine,
-intégré à l'application. Ses opérations passent exclusivement par le client de
+L'application complète est servie sur l'origine Cloud Run, indépendante de Pages.
+Le lien Pages redirige avant toute authentification. La page Paramétrage charge les
+formulaires US-015 dans un iframe de même origine Cloud Run, intégré à l'application. Ses opérations passent exclusivement par le client de
 l'application parente ; aucun appel direct Apps Script, secret OAuth, jeton Google
 ou clé de signature n'est placé dans les fichiers publics.
 
-Flux : Pages → connexion Google → Cloud Run → requête signée → même Apps Script REC.
+Flux : Pages (redirection seulement) → interface Cloud Run → connexion Google →
+API Cloud Run de même origine → requête signée → même Apps Script REC.
 
 Cloud Run effectue un code flow OpenID Connect avec PKCE et nonce ; il vérifie la
 signature RS256 par les certificats Google, issuer, audience, azp éventuel, dates,
@@ -46,13 +48,14 @@ Une identité hors liste ne reçoit aucune session REC. Le callback peut affiche
 uniquement sa propre identité Google vérifiée (email/sub) pour l'enregistrement
 privé par l'administrateur, jamais un jeton ou une donnée métier.
 
-Le retour vers Pages contient un ticket à usage unique, valable 60 secondes, lié
+Le retour vers l’interface Cloud Run contient un ticket à usage unique, valable 60 secondes, lié
 à un second PKCE initié par le navigateur. Il est dans le fragment, nettoyé avant
 échange. Le navigateur conserve seulement un identifiant de session opaque pendant
 15 minutes en mémoire ; le vérificateur temporaire est supprimé de sessionStorage.
 Pas de cookie tiers, pas de popup, pas de jeton en localStorage. Après actualisation,
 la reconnexion est volontairement requise ; les données Sheets restent persistantes.
-CORS est limité à l'origine Pages prévue, requêtes authentifiées par Bearer.
+Les API n'acceptent que l'origine Cloud Run ; même Pages est refusé. Requêtes
+authentifiées par Bearer. Aucun ticket ou session sur l'origine Pages partagée.
 Le PIN et les permissions de démonstration n'accordent aucun droit serveur REC.
 
 Cloud Run signe le corps exact (horodatage, nonce, acteur, demande). Apps Script
@@ -73,8 +76,10 @@ appeler ce projet sans session navigateur Gmail, une autorisation distincte sera
 nécessaire pour rendre joignable le transport HTTP du MÊME déploiement. Le mode
 optionnel gateway_transport du workflow manuel existant prépare alors
 ANYONE_ANONYMOUS / USER_DEPLOYING. Cela ne rend ni lectures ni écritures anonymes :
-tous les anciens GET/JSONP/POST exigent explicitement ActiveUser=V2_ADMIN_EMAIL ;
-seul rec.gateway valide la signature et l'autorisation serveur. Une clé ou liste
+le packager lie ce mode à une constante compilée REC_SIGNED_TRANSPORT=true.
+Tous les anciens GET/JSONP/POST et RPC directs sont fermés, même pour le compte
+V2_ADMIN_EMAIL. Seul rec.gateway valide la signature et l'autorisation serveur.
+Cette fermeture ne dépend pas d'une propriété modifiable ou de la présence d'une clé. Une clé ou liste
 absente ferme l'accès. L'ancien code sans ces gardes est refusé par le packager en
 mode passerelle ; cette détection ne remplace pas la revue du commit approuvé.
 
@@ -110,8 +115,9 @@ continuent à refuser un manifeste ou un déploiement public. executionApi reste
    Puis connecter Hotmail et confirmer rec.status, lecture et simulation, avec V2
    inactive. Une redirection vers accounts.google.com sur le transport Apps Script
    est refusée : pas de repli ni contournement de MYSELF.
-8. Configurer l'origine Cloud Run publique dans le dépôt demo, revue puis publication
-   Pages séparément autorisée. Aucun secret GitHub ou Google dans le front.
+8. Exporter les assets du commit frontend approuvé vers rec-server/public puis les
+   embarquer dans Cloud Run (empreintes vérifiées au démarrage). Configurer ensuite
+   la redirection Pages, revue puis publication séparément autorisée. Aucun secret GitHub ou Google dans le front.
 9. Après validation de l'identité, des cibles et des sauvegardes seulement, autoriser
    REFERENTIEL_V2=1 en REC, puis simuler et confirmer l'import. Rien n'active V2 ici.
 
@@ -152,8 +158,8 @@ supporte pas deflate-raw, utiliser CSV UTF-8 sans activer de service externe.
 
 Aucun raccordement, IAM, OAuth, secret, propriété, déploiement, import réel ou
 publication Pages réalisé. Aucun lien d'intégration nouvelle n'est annoncé comme
-opérationnel. Après les validations, l'adresse cible reste le même site sous
-#parametrage ; Synthèse/Saisie fictives ne deviennent pas des données réelles.
+opérationnel. Après les validations, l'ancien lien Pages redirigera vers la même interface
+#parametrage sur Cloud Run ; Synthèse/Saisie fictives ne deviennent pas des données réelles.
 Les identifiants privés des projets Cloud et clients ne sont pas disponibles dans
 les dépôts : ils seront vérifiés dans les interfaces autorisées, sans demander
 mot de passe, jeton personnel ou contenu de secret dans la conversation.
@@ -164,7 +170,9 @@ et les expirations bornent les sessions, mais ne constituent pas une protection
 anti-DDoS complète. Le nonce CacheService est une protection de replay best-effort ;
 les écritures exactes restent idempotentes par requestId même en cas d'éviction.
 Le gel des modifications extérieures reste nécessaire aux recettes et migrations.
-GitHub Pages partage l'origine entre les dépôts du même compte : maintenir tous les
-scripts de cette origine fiables ; un domaine dédié peut isoler davantage ultérieurement.
+GitHub Pages partage l'origine entre les dépôts du même compte : c'est pourquoi
+aucune session ou requête métier n'y est désormais créée. L'isolation Cloud Run est
+obligatoire, pas une amélioration optionnelle. Les routes privées/serveur ne sont
+jamais servies par le gestionnaire d'assets publics, limité au manifeste vérifié.
 La passerelle gère un bearer de session en mémoire : un XSS pourrait le lire ; elle
 ne place aucun secret OAuth ni jeton Google dans le navigateur.

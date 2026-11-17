@@ -9,12 +9,12 @@ const user={email:'rec-user@example.invalid',sub:'subject-fictif',role:'admin'};
 function jwt(change={}){const h=Buffer.from(JSON.stringify({alg:'RS256',kid:'test'})).toString('base64url'),p=Buffer.from(JSON.stringify({iss:'https://accounts.google.com',aud:'client-fictif',nonce:'nonce-fictif',sub:user.sub,email:user.email,email_verified:true,iat:Math.floor(now/1000),exp:Math.floor(now/1000)+3600,...change})).toString('base64url');return h+'.'+p+'.'+sign('RSA-SHA256',Buffer.from(h+'.'+p),privateKey).toString('base64url');}
 test('identité signée, audience, nonce, compte et expiration',()=>{
  const opts={clientId:'client-fictif',nonce:'nonce-fictif',allowed:[user],now};assert.deepEqual(identity(jwt(),{keys:[jwk]},opts),user);
- for(const change of [{aud:'autre'},{nonce:'autre'},{iss:'https://evil.invalid'},{email_verified:false},{exp:1},{iat:Math.floor(now/1000)+3600},{sub:'intrus'}])assert.throws(()=>identity(jwt(change),{keys:[jwk]},opts));
+ for(const change of [{aud:'autre'},{nonce:'autre'},{iss:'https://evil.invalid'},{email_verified:false},{email_verified:'true'},{azp:'evil-client'},{exp:1},{iat:Math.floor(now/1000)+3600},{sub:'intrus'}])assert.throws(()=>identity(jwt(change),{keys:[jwk]},opts));
  assert.throws(()=>identity(jwt()+'x',{keys:[jwk]},opts));
 });
 test('config non REC ou URL Google étrangère refusée avant réseau',()=>{
  assert.throws(()=>config({APP_ENV:'PROD'}),/REC_ONLY/);
- assert.throws(()=>config({APP_ENV:'REC',REC_SERVER_URL:'https://rec.example.invalid',REC_APPS_SCRIPT_URL:'https://script.google.com/macros/s/PROD_FICTIF/exec'}),/WRONG_DEPLOYMENT_TARGET/);
+ assert.throws(()=>config({APP_ENV:'REC',REC_SERVER_URL:'https://rec-fictif.run.app',REC_APPS_SCRIPT_URL:'https://script.google.com/macros/s/PROD_FICTIF/exec'}),/WRONG_DEPLOYMENT_TARGET/);
 });
 test('passerelle : cible signée vérifiée avant lecture, sans OAuth dans le message Apps Script',async()=>{
  const key='a'.repeat(64),calls=[];
@@ -37,3 +37,11 @@ test('réponse non signée, mauvaise cible ou redirection connexion Google : auc
  }
 });
 test('PKCE SHA256 stable, pas de secret OAuth dans les exports front',()=>{assert.equal(hash('fictif').length,43);});
+test('JSON en chunks UTF-8 : caractères préservés et octets invalides refusés',async()=>{
+ const {readJson}=await import('../../rec-server/server.mjs');
+ const bytes=Buffer.from('{"nom":"Élodie"}'),cut=bytes.indexOf(Buffer.from('É'))+1;
+ async function* chunks(){yield bytes.subarray(0,cut);yield bytes.subarray(cut);}
+ assert.equal((await readJson(chunks(),100)).nom,'Élodie');
+ async function* invalid(){yield Buffer.from([0x7b,0x22,0xff,0x22,0x3a,0x31,0x7d]);}
+ await assert.rejects(()=>readJson(invalid(),100));await assert.rejects(()=>readJson(chunks(),5),/REQUEST_TOO_LARGE/);
+});

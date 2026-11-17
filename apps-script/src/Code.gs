@@ -1,5 +1,6 @@
 /**************** Suivi Dépôt — garde-fous REC et accès authentifiés ****************/
 // Valeurs privées dans les propriétés du projet uniquement. Aucun repli.
+const REC_SIGNED_TRANSPORT = false;
 const SCHEMAS = {
   transactions: ['type','date','montant','sous_bloc','description','local','locataire','fournisseur','periode','moyen','personne'],
   config_logements: ['num','type','locataire','loyer'],
@@ -25,7 +26,7 @@ function _checkedSheets_() {
   });
   return sheets;
 }
-function _getSheet() { return _checkedSheets_().transactions; }
+function _getSheet_() { return _checkedSheets_().transactions; }
 function _object_(value, fields) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !fields.includes(k))) throw new Error('INVALID_INPUT');
 }
@@ -73,7 +74,7 @@ function _replaceConfig_(name, rows) {
   }
 }
 /** Construit un TextOutput JSON (ou JSONP si callback fourni) */
-function _json(obj, callback) {
+function _json_(obj, callback) {
   const payload = JSON.stringify(obj);
   if (callback) {
     const safe = String(callback);
@@ -88,6 +89,7 @@ function _json(obj, callback) {
 // Les anciens points d'entrée restent privés même si le transport Web est ouvert
 // ultérieurement pour la passerelle authentifiée. Aucun accès anonyme aux lectures.
 function _recLegacyActor_() {
+  if(REC_SIGNED_TRANSPORT)throw new Error('AUTH_REQUIRED');
   const p=PropertiesService.getScriptProperties();
   if(p.getProperty('APP_ENV')!=='REC')throw new Error('AUTH_REQUIRED');
   const email=typeof Session!=='undefined'?Session.getActiveUser().getEmail():'';
@@ -100,16 +102,16 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) throw new Error('INVALID_INPUT');
     const body = JSON.parse(e.postData.contents);
     if(body?.action==='rec.gateway')return _recGateway_(body);
-    try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}
+    try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}
     if (typeof body?.action === 'string' && body.action.startsWith('v2.')) {
-      try { return _json(_v2Write_(body)); } catch(err) { return _json(_v2Error_(err)); }
+      try { return _json_(_v2Write_(body)); } catch(err) { return _json_(_v2Error_(err)); }
     }
     const row = _transactionRow_(body);
-    const sh = _getSheet();
+    const sh = _getSheet_();
     sh.appendRow(row);
-    return _json({ ok: true });
+    return _json_({ ok: true });
   } catch (err) {
-    return _json({ ok: false, error: 'REQUEST_FAILED' });
+    return _json_({ ok: false, error: 'REQUEST_FAILED' });
   }
 }
 /*************** CONFIG PERSISTANTE – LOGEMENTS ***************/
@@ -169,19 +171,19 @@ function _readConfigHedam_() {
 function _writeConfigHedam_(rows) { _replaceConfig_('config_hedam', rows); }
 /*************** doGet: CONFIG + ADD + LECTURE ***************/
 function doGet(e) {
-  try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}
+  try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}
   const cb = (e && e.parameter && e.parameter.callback)
     ? String(e.parameter.callback)
     : null;
-  if (cb && !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(cb)) return _json({ok:false,error:'INVALID_CALLBACK'});
+  if (cb && !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(cb)) return _json_({ok:false,error:'INVALID_CALLBACK'});
   const action = (e && e.parameter && e.parameter.action) || '';
   if (action.startsWith('v2.')) {
     try {
       if (action === 'v2.ui') { _v2Actor_(); _v2Book_(); return HtmlService.createHtmlOutputFromFile('ParametrageV2').setTitle('Paramétrage V2 — REC'); }
-      if (action === 'v2.read') return _json(_v2Read_(), cb);
-      if (action === 'v2.simulate') return _json(_v2Simulate_(JSON.parse(e.parameter.rows)), cb);
-      return _json({ok:false,error:'POST_REQUIRED'}, cb);
-    } catch(err) { return _json(_v2Error_(err), cb); }
+      if (action === 'v2.read') return _json_(_v2Read_(), cb);
+      if (action === 'v2.simulate') return _json_(_v2Simulate_(JSON.parse(e.parameter.rows)), cb);
+      return _json_({ok:false,error:'POST_REQUIRED'}, cb);
+    } catch(err) { return _json_(_v2Error_(err), cb); }
   }
   // PING
   if (e && e.parameter && e.parameter.ping === '1') {
@@ -194,7 +196,7 @@ function doGet(e) {
   if (action === 'config') {
     try {
       if (e && e.parameter && e.parameter.debug === '1') {
-        return _json({ ok:false, error:'DEBUG_DISABLED' }, cb);
+        return _json_({ ok:false, error:'DEBUG_DISABLED' }, cb);
       }
       if (e.parameter.what === 'all') {
         const config = {
@@ -202,47 +204,47 @@ function doGet(e) {
           locaux: _readConfigLocaux_(),
           hedam: _readConfigHedam_()
         };
-        return _json({ ok:true, config, referentielV2: typeof _v2Enabled_ === 'function' && _v2Enabled_() }, cb);
+        return _json_({ ok:true, config, referentielV2: typeof _v2Enabled_ === 'function' && _v2Enabled_() }, cb);
       }
       if (e.parameter.save === 'logements') {
         if (!e.parameter.payload) throw new Error('INVALID_INPUT');
         const rows = JSON.parse(decodeURIComponent(e.parameter.payload));
         _writeConfigLogements_(rows);
-        return _json({ ok:true }, cb);
+        return _json_({ ok:true }, cb);
       }
       if (e.parameter.save === 'locaux') {
         if (!e.parameter.payload) throw new Error('INVALID_INPUT');
         const rows = JSON.parse(decodeURIComponent(e.parameter.payload));
         _writeConfigLocaux_(rows);
-        return _json({ ok:true }, cb);
+        return _json_({ ok:true }, cb);
       }
       if (e.parameter.save === 'hedam') {
         if (!e.parameter.payload) throw new Error('INVALID_INPUT');
         const rows = JSON.parse(decodeURIComponent(e.parameter.payload));
         _writeConfigHedam_(rows);
-        return _json({ ok:true }, cb);
+        return _json_({ ok:true }, cb);
       }
-      return _json({ ok:false, error:'INVALID_ACTION' }, cb);
+      return _json_({ ok:false, error:'INVALID_ACTION' }, cb);
     } catch (err) {
-      return _json({ ok:false, error:'REQUEST_FAILED' }, cb);
+      return _json_({ ok:false, error:'REQUEST_FAILED' }, cb);
     }
   }
   // AJOUT
   if (action === 'add') {
     try {
       const row = _transactionRow_(e.parameter);
-      _getSheet().appendRow(row);
-      return _json({ ok:true }, cb);
-    } catch (_) { return _json({ ok:false, error:'REQUEST_FAILED' }, cb); }
+      _getSheet_().appendRow(row);
+      return _json_({ ok:true }, cb);
+    } catch (_) { return _json_({ ok:false, error:'REQUEST_FAILED' }, cb); }
   }
   // LECTURE
   try {
-    const sh   = _getSheet();
+    const sh   = _getSheet_();
     const data = sh.getDataRange().getValues();
     const head = data.shift() || [];
     const rows = data.map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
-    return _json({ ok: true, rows }, cb);
+    return _json_({ ok: true, rows }, cb);
   } catch (err) {
-    return _json({ ok: false, error: 'REQUEST_FAILED' }, cb);
+    return _json_({ ok: false, error: 'REQUEST_FAILED' }, cb);
   }
 }

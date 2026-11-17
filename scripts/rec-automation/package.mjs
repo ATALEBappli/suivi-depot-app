@@ -29,7 +29,9 @@ export function packageCommit(sha, git=(...args)=>execFileSync('git',args,{encod
   requireThat(!/<script[^>]+src=|<link[^>]+href=/i.test(html),'EXTERNAL_ASSETS');
   files.push({name:'ParametrageV2',type:'HTML',source:html},{name:'appsscript',type:'JSON',source:read('apps-script/src/appsscript.json')});
   if(gatewayTransport){
-    requireThat(files[0].source.includes("if(body?.action==='rec.gateway')return _recGateway_(body);") && files[0].source.includes("function doGet(e) {\n  try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}") && files[0].source.split("try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}").length===3 && files[2].source.includes('function _recGateway_(body)') && files[2].source.includes("p.getProperty('REC_GATEWAY_KEY')"),'GATEWAY_GUARDS_MISSING');
+    requireThat(files[0].source.includes("if(body?.action==='rec.gateway')return _recGateway_(body);") && files[0].source.includes("function doGet(e) {\n  try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}") && files[0].source.split("try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}").length===3 && files[2].source.includes('function _recGateway_(body)') && files[2].source.includes("p.getProperty('REC_GATEWAY_KEY')"),'GATEWAY_GUARDS_MISSING');
+    requireThat(files[0].source.split('const REC_SIGNED_TRANSPORT = false;').length===2 && files[0].source.includes("if(REC_SIGNED_TRANSPORT)throw new Error('AUTH_REQUIRED');") && files[2].source.includes("if(REC_SIGNED_TRANSPORT)throw new Error('FORBIDDEN');"),'GATEWAY_GUARDS_MISSING');
+    files[0].source=files[0].source.replace('const REC_SIGNED_TRANSPORT = false;','const REC_SIGNED_TRANSPORT = true;');
     const f=files.find(f=>f.name==='appsscript'),m=JSON.parse(f.source);m.webapp={access:'ANYONE_ANONYMOUS',executeAs:'USER_DEPLOYING'};f.source=JSON.stringify(m,null,2)+'\n';
   }
   const candidate={schema:1,sourceSha:sha,files,contentHash:contentHash({files})};

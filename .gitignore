@@ -14,3 +14,6 @@ work/
 
 # Frontend généré : configuration injectée hors Git.
 dist/
+
+# Assets REC générés depuis le commit frontend approuvé, jamais de secrets.
+rec-server/public/

@@ -1,14 +1,16 @@
 // Node 24, sans dépendance. Secrets exclusivement dans l'environnement serveur.
 import {createServer} from 'node:http';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL,fileURLToPath} from 'node:url';
+import {site} from './site.mjs';
 import {random,hash,requireThat,identity,config} from './security.mjs';
 import {bridge} from './bridge.mjs';
-export function application(cfg,{fetcher=fetch,now=Date.now,call=bridge(cfg,{fetcher,now}),randomId=random}={}) {
- const states=new Map(),tickets=new Map(),sessions=new Map();let jwksCache=null,jwksUntil=0;
+export async function readJson(req,limit){const chunks=[];let bytes=0;for await(const chunk of req){const b=Buffer.from(chunk);bytes+=b.length;requireThat(bytes<limit,'REQUEST_TOO_LARGE');chunks.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));}
+export function application(cfg,{fetcher=fetch,now=Date.now,call=bridge(cfg,{fetcher,now}),randomId=random,serveSite=()=>false}={}) {
+ requireThat(cfg.origin===new URL(cfg.base).origin && cfg.front===cfg.base+'/','INVALID_FRONTEND_ORIGIN');
+ const states=new Map(),tickets=new Map(),sessions=new Map();let authWindow=0,authCount=0;let jwksCache=null,jwksUntil=0;
  const prune=map=>{for(const [k,v] of map)if(v.exp<=now())map.delete(k);};
  const put=(map,value,ttl,cap)=>{prune(map);requireThat(map.size<cap,'RATE_LIMIT');const id=randomId();map.set(id,{...value,exp:now()+ttl});return id;};
  const take=(map,id)=>{const value=map.get(id);map.delete(id);requireThat(value && value.exp>now(),'AUTH_EXPIRED');return value;};
- async function jsonBody(req){let data='';for await(const chunk of req){data+=chunk;requireThat(Buffer.byteLength(data)<600000,'REQUEST_TOO_LARGE');}return JSON.parse(data);}
  async function jwks(){if(!jwksCache || jwksUntil<=now()){const r=await fetcher('https://www.googleapis.com/oauth2/v3/certs',{redirect:'error',signal:AbortSignal.timeout(10000)});requireThat(r.ok,'IDENTITY_UNAVAILABLE');jwksCache=await r.json();jwksUntil=now()+300000;}return jwksCache;}
  return async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'");
@@ -27,15 +29,19 @@ export function application(cfg,{fetcher=fetch,now=Date.now,call=bridge(cfg,{fet
     const ticket=put(tickets,{user,challenge:flow.challenge},60000,100);
     res.writeHead(303,{Location:cfg.front+'#parametrage/login/'+ticket});res.end();return;
    }
-   requireThat(origin===cfg.origin,'ORIGIN_NOT_ALLOWED');
+   if(req.method==='GET' && serveSite(url.pathname,res))return;
+   requireThat(origin===cfg.origin && cfg.origin===new URL(cfg.base).origin,'ORIGIN_NOT_ALLOWED');
    res.setHeader('Access-Control-Allow-Origin',cfg.origin);res.setHeader('Vary','Origin');
    if(req.method==='OPTIONS'){
     requireThat(req.headers['access-control-request-method']==='POST','METHOD_NOT_ALLOWED');
     res.writeHead(204,{'Access-Control-Allow-Methods':'POST','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Max-Age':'300'});res.end();return;
    }
    requireThat(req.method==='POST' && req.headers['content-type']?.split(';')[0]==='application/json','METHOD_NOT_ALLOWED');
-   const body=await jsonBody(req);
+   const authPath=['/auth/start','/auth/exchange'].includes(url.pathname);
+   if(!authPath){const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];prune(sessions);requireThat(sessions.has(token),'SESSION_REQUIRED');}
+   const body=await readJson(req,authPath?8192:600000);
    if(url.pathname==='/auth/start') {
+    if(now()-authWindow>=60000){authWindow=now();authCount=0;}requireThat(++authCount<=10,'RATE_LIMIT');
     requireThat(typeof body.challenge==='string' && /^[A-Za-z0-9_-]{43}$/.test(body.challenge),'INVALID_PKCE');
     const verifier=randomId(),nonce=randomId(),state=put(states,{verifier,nonce,challenge:body.challenge},300000,100);
     const q=new URLSearchParams({client_id:cfg.clientId,redirect_uri:cfg.base+'/oauth/callback',response_type:'code',scope:'openid email',state,nonce,code_challenge:hash(verifier),code_challenge_method:'S256',prompt:'select_account'});
@@ -59,6 +65,6 @@ export function application(cfg,{fetcher=fetch,now=Date.now,call=bridge(cfg,{fet
  };
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
- try{const cfg=config(process.env);createServer(application(cfg)).listen(Number(process.env.PORT || 8080),'0.0.0.0');}
+ try{const cfg=config(process.env);createServer(application(cfg,{serveSite:site(fileURLToPath(new URL('./public/',import.meta.url)),cfg.base)})).listen(Number(process.env.PORT || 8080),'0.0.0.0');}
  catch{console.error('REC_SERVER_CONFIGURATION_REQUIRED');process.exitCode=1;}
 }

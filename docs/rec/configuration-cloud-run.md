@@ -8,7 +8,7 @@ fourni dans le dépôt. Le serveur ne réutilise pas REC_GOOGLE_OAUTH de GitHub.
 | Nom | Destination | Valeur |
 |---|---|---|
 | APP_ENV | Cloud Run | REC uniquement |
-| REC_SERVER_URL | Cloud Run | origine HTTPS du service REC, sans chemin |
+| REC_SERVER_URL | Cloud Run | origine HTTPS run.app du service REC, sans chemin ; sert aussi le frontend isolé |
 | REC_APPS_SCRIPT_URL | Cloud Run | URL /exec du déploiement REC existant ; empreinte vérifiée par le code |
 | REC_OAUTH_CLIENT_ID | Cloud Run | client Web OpenID REC, identifiant public mais gardé en configuration serveur |
 | REC_OAUTH_CLIENT_SECRET | Secret Manager → Cloud Run | secret du client Web ; jamais côté Pages |
@@ -39,9 +39,13 @@ compte utilisateur dans le code frontend ; elle n'est utilisée que par les serv
 
 ## Construction reproductible (à adapter au projet/région REC confirmés)
 
-Le contexte source est rec-server/, pas la racine du dépôt. Les listes .dockerignore
-et .gcloudignore excluent tout autre fichier. Le Dockerfile ne copie que *.mjs et
-package.json ; aucune installation npm ni dépendance applicative externe.
+Avant la construction, exporter le commit frontend approuvé depuis suivi-depot-demo
+avec scripts/prepare-cloud-run-site.mjs <SHA_40> <app>/rec-server/public (sortie neuve).
+Ces assets sont générés, ignorés par Git et vérifiés au démarrage. Le serveur ne
+démarre pas sans ce manifeste et ces fichiers. Le contexte source est rec-server/,
+pas la racine du dépôt. Les listes .dockerignore
+et .gcloudignore excluent tout autre fichier. Le Dockerfile ne copie que *.mjs,
+package.json et ces assets publics ; aucune installation npm ni dépendance applicative externe.
 
     gcloud run deploy rec-gateway --source rec-server --project <PROJET_REC> --region <REGION_REC> --max-instances 1 --concurrency 40 --no-allow-unauthenticated --env-vars-file <FICHIER_PRIVE_HORS_GIT> --set-secrets REC_OAUTH_CLIENT_SECRET=<SECRET_OAUTH>:<VERSION>,REC_GATEWAY_KEY=<SECRET_SIGNATURE>:<VERSION>
 
@@ -60,7 +64,9 @@ manquante renvoie seulement REC_SERVER_CONFIGURATION_REQUIRED, sans secret.
 
 Pour que Safari puisse accéder au service, l'invocation HTTP Cloud Run devra ensuite
 être rendue joignable après validation distincte ; les routes métier exigent leur
-session applicative et le serveur autorise seulement l'origine Pages prévue.
+session applicative et le serveur autorise seulement sa propre origine Cloud Run.
+L'interface est hébergée sur ce service ; Pages ne crée plus de session et ne peut
+pas appeler les API, même avec un bearer connu.
 Ne pas ouvrir de droit Drive/Sheets au public ni partager le classeur avec allUsers.
 
 IMPORTANT journalisation : le callback OAuth contient un code dans la query string.
@@ -78,7 +84,9 @@ Dans le checkout suivi-depot-demo, après confirmation du service :
     REC_SERVER_URL=https://<service-REC>.run.app node scripts/configure-rec.mjs
     node --test tests/configure-rec.test.mjs
 
-Seuls rec-config.mjs et l'origine connect-src de la CSP sont modifiés ; aucun secret.
+Seul rec-config.mjs reçoit l'URL de redirection publique ; la CSP Pages reste
+connect-src none et n'autorise aucun appel API. Cloud Run sert son propre
+rec-config.mjs avec sa propre origine et sa CSP connect-src self. Aucun secret.
 Faire revoir ce diff avant publication Pages. L'export US-015 vient de suivi-depot-app :
 
     node scripts/prepare-rec-reference.mjs /chemin/suivi-depot-demo/referentiel
@@ -88,7 +96,7 @@ PR liées ; ne pas lancer l'ancien export demo/ à la place du site actuel.
 
 ## iPhone
 
-La connexion utilise des navigations plein écran et un retour dans le même onglet,
+Après redirection vers Cloud Run, la connexion utilise des navigations plein écran et un retour dans le même onglet,
 pas une popup ou un cookie tiers. L'initialisation Cloud Run/OAuth/Secret Manager
 reste une tâche administrateur ; Cloud Console et Cloud Shell en mode ordinateur
 sur iPhone peuvent la réaliser, mais la saisie d'un ensemble de secrets y est peu

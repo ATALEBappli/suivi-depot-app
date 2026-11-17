@@ -4,8 +4,8 @@ import {createHmac} from 'node:crypto';
 import {runtime} from '../../scripts/v2-local-runtime.mjs';
 import {mac,pins} from '../../rec-server/security.mjs';
 const key='a'.repeat(64),user={email:'rec-user@example.invalid',sub:'subject-fictif',role:'admin'};
-function setup(role='admin',active='0'){
- const r=runtime({properties:{REFERENTIEL_V2:active,REC_GATEWAY_KEY:key,REC_USER_ALLOWLIST:JSON.stringify([{...user,role}])}}),cache=new Map();
+function setup(role='admin',active='0',signedTransport=false){
+ const r=runtime({signedTransport,properties:{REFERENTIEL_V2:active,REC_GATEWAY_KEY:key,REC_USER_ALLOWLIST:JSON.stringify([{...user,role}])}}),cache=new Map();
  r.api.ScriptApp={getScriptId:()=> 'SCRIPT_REC_FICTIF'};
  r.api.CacheService={getScriptCache:()=>({get:k=>cache.get(k),put:(k,v)=>cache.set(k,v)})};
  const original=r.api.Utilities.computeDigest;
@@ -54,4 +54,23 @@ test('changement de propriétés entre authentification et écriture : aucun acc
  r.api.CacheService.getScriptCache=()=>{const c=original();return {get:c.get,put:(k,v)=>{c.put(k,v);r.props.SPREADSHEET_ID='PROD_FICTIF';r.props.REC_SPREADSHEET_ID='PROD_FICTIF';}};};
  const out=result(r,envelope({action:'v2.write',requestId:'race-test-fictif',expectedRevision:0,command:{action:'logement',data:{numero:'01',type:'F3',etage:'RDC',actif:true}}}));
  assert.equal(out.ok,false);assert.equal(ids.includes('PROD_FICTIF'),false);assert.deepEqual(r.writes,[]);assert.equal(r.api._recVerifiedActor_,null);
+});
+
+test('mode signé : même le compte de maintenance ne contourne pas le MAC via HTTP ou RPC',()=>{
+ const r=setup('admin','1',true),before=JSON.stringify(r.tables);r.setActor('admin@example.invalid');
+ for(const params of [{action:'v2.read'},{action:'config',what:'all'},{action:'add',type:'Entrée',montant:'1',date:'2026-11-17'},{callback:'evil'}])assert.equal(r.get(params).ok,false);
+ assert.equal(r.post({action:'v2.write',requestId:'bypass-test-fictif',expectedRevision:0,command:{action:'logement',data:{numero:'01',type:'F3',actif:true}}}).ok,false);
+ assert.equal(r.api.v2Client({action:'v2.read'}).ok,false);assert.equal(JSON.stringify(r.tables),before);assert.deepEqual(r.writes,[]);
+ assert.equal(result(r,envelope({action:'v2.read'})).ok,true);
+});
+test('transport signé sans clé : aucun accès, même avec la session du mainteneur',()=>{
+ const r=setup('admin','1',true);r.setActor('admin@example.invalid');r.props.REC_GATEWAY_KEY='';
+ assert.equal(r.get({action:'v2.read'}).ok,false);assert.equal(r.api.v2Client({action:'v2.read'}).ok,false);
+ assert.equal(result(r,envelope({action:'v2.read'})).ok,false);assert.deepEqual(r.writes,[]);
+});
+test('éviction du cache nonce : le même message ne crée pas une deuxième écriture',()=>{
+ const r=setup('admin','1',true),e=envelope({action:'v2.write',requestId:'cache-eviction-fictif',expectedRevision:0,command:{action:'logement',data:{numero:'01',type:'F3',etage:'RDC',actif:true}}});
+ assert.equal(result(r,e).ok,true);const before=JSON.stringify(r.tables);
+ r.api.CacheService.getScriptCache=()=>({get:()=>null,put:()=>{}});
+ assert.equal(result(r,e).replayed,true);assert.equal(JSON.stringify(r.tables),before);
 });

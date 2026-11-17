@@ -7,7 +7,7 @@ import {hash} from '../../rec-server/security.mjs';
 import {fakeProvider} from './fake-provider.mjs';
 const user={email:'hot-rec@example.invalid',sub:'subject-fictif',role:'admin'};
 test('OAuth complet : PKCE, ticket unique, session, CORS, expiration et déconnexion',async()=>{
- const provider=fakeProvider(),cfg={base:'https://rec.example.invalid',front:'https://pages.example.invalid/rec/',origin:'https://pages.example.invalid',clientId:'fake-client',clientSecret:'private-fake',allowed:[user]};
+ const provider=fakeProvider(),cfg={base:'https://rec.example.invalid',front:'https://rec.example.invalid/',origin:'https://rec.example.invalid',clientId:'fake-client',clientSecret:'private-fake',allowed:[user]};
  let time=Date.now(),calls=0;const server=createServer(application(cfg,{fetcher:provider.fetcher,now:()=>time,call:async(body,u)=>{calls++;assert.equal(u.email,user.email);return {ok:true};}}));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
  const post=(path,body,token,origin=cfg.origin)=>fetch(base+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
@@ -21,8 +21,13 @@ test('OAuth complet : PKCE, ticket unique, session, CORS, expiration et déconne
   const exchanged=await (await post('/auth/exchange',{ticket,verifier})).json();assert.equal(exchanged.expiresIn,900);assert.equal(JSON.stringify(exchanged).includes('MUST_NOT'),false);
   assert.equal((await post('/auth/exchange',{ticket,verifier})).status,403);
   assert.equal((await post('/api',{action:'v2.read'},exchanged.session)).status,200);assert.equal(calls,1);
+  assert.equal((await post('/api',{},exchanged.session,'https://atalebappli.github.io')).status,403);
   assert.equal((await post('/api',{},exchanged.session,'https://evil.invalid')).status,403);assert.equal(calls,1);
   assert.equal((await post('/auth/logout',{},exchanged.session)).status,200);assert.equal((await post('/api',{},exchanged.session)).status,403);
   time+=900000;assert.equal((await post('/api',{},exchanged.session)).status,403);
  }finally{await new Promise(r=>server.close(r));}
+});
+
+test('origine Pages partagée non admise comme origine des sessions',()=>{
+ assert.throws(()=>application({base:'https://rec-fictif.run.app',front:'https://atalebappli.github.io/suivi-depot-demo/',origin:'https://atalebappli.github.io'}),/INVALID_FRONTEND_ORIGIN/);
 });

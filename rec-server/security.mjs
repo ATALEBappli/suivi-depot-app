@@ -4,7 +4,7 @@ export const hash=s=>createHash('sha256').update(s).digest('base64url');
 export const hex=s=>createHash('sha256').update(s).digest('hex');
 export const random=()=>randomBytes(32).toString('base64url');
 export const mac=(s,key)=>createHmac('sha256',key).update(s).digest('base64url');
-export function equal(a,b){return typeof a==='string' && typeof b==='string' && a.length===b.length && timingSafeEqual(Buffer.from(a),Buffer.from(b));}
+export function equal(a,b){if(typeof a!=='string' || typeof b!=='string')return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length && timingSafeEqual(x,y);}
 export function requireThat(value,code){if(!value)throw Error(code);}
 export function identity(token,jwks,{clientId,nonce,allowed,now=Date.now()}) {
  const parts=token.split('.');requireThat(parts.length===3 && token.length<20000,'INVALID_ID_TOKEN');
@@ -19,8 +19,8 @@ export function identity(token,jwks,{clientId,nonce,allowed,now=Date.now()}) {
 export function allowlist(value){const users=JSON.parse(value || '[]');requireThat(Array.isArray(users) && users.length<=20 && users.every(u=>typeof u.email==='string' && u.email===u.email.toLowerCase() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email) && typeof u.sub==='string' && /^[A-Za-z0-9_-]{1,150}$/.test(u.sub) && ['reader','admin'].includes(u.role)) && new Set(users.map(u=>u.sub)).size===users.length,'INVALID_ALLOWLIST');return users;}
 export function config(env) {
  requireThat(env.APP_ENV==='REC','REC_ONLY');
- const base=new URL(env.REC_SERVER_URL),front=new URL('https://atalebappli.github.io/suivi-depot-demo/');
- requireThat(base.protocol==='https:' && base.pathname==='/' && !base.search && !base.hash && !base.username && !base.password,'INVALID_SERVER_URL');
+ const base=new URL(env.REC_SERVER_URL),front=new URL(base.origin+'/');
+ requireThat(base.protocol==='https:' && base.hostname.endsWith('.run.app') && !base.port && base.pathname==='/' && !base.search && !base.hash && !base.username && !base.password,'INVALID_SERVER_URL');
  const endpoint=new URL(env.REC_APPS_SCRIPT_URL);
  const match=endpoint.href.match(/^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
  requireThat(match && hex(match[1])===pins.deployment,'WRONG_DEPLOYMENT_TARGET');
