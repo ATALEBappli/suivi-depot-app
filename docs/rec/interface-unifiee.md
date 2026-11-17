@@ -1,5 +1,10 @@
 # Interface REC unifiée — préparation, sans publication
 
+Évolution sans facturation demandée après fusion : [Workers Free](workers-free.md)
+remplace Cloud Run comme cible de préparation. Les contrats OAuth/HMAC et le frontend
+sont réutilisés ; la description Cloud Run ci-dessous reste la base des PR #20/#4.
+Aucune cible réelle n’a été déployée par cette adaptation.
+
 ## Architecture constatée
 
 | Ressource | Source et branche de travail | État / responsabilité |

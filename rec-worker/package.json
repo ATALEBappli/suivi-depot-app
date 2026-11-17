@@ -1,0 +1,1 @@
+{"name":"suivi-depot-rec-worker","private":true,"type":"module","scripts":{"check":"wrangler deploy --dry-run --outdir /tmp/rec-worker-dry-run"},"devDependencies":{"miniflare":"5.20261117.0-beta","wrangler":"4.164.0"}}

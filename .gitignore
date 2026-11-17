@@ -17,3 +17,9 @@ dist/
 
 # Assets REC générés depuis le commit frontend approuvé, jamais de secrets.
 rec-server/public/
+
+# Workers : artefacts, sessions locales et secrets hors Git.
+rec-worker/node_modules/
+rec-worker/.wrangler/
+rec-worker/.dev.vars*
+rec-worker/generated-manifest.mjs

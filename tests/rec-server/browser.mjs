@@ -34,7 +34,8 @@ const pages=createServer(async(req,res)=>{try{
  // Pages garde connect-src none : seulement une redirection vers l'origine isolée.
  res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.woff2':'font/woff2'})[extname(file)] || 'application/octet-stream'});res.end(body);
 }catch{res.writeHead(404);res.end();}});
-await new Promise(r=>server.listen(4180,'127.0.0.1',r));await new Promise(r=>pages.listen(4179,'127.0.0.1',r));let browser;
+let worker;
+if(process.env.REC_WORKER_TEST==='1'){const {localWorker}=await import('../rec-worker/harness.mjs');worker=await localWorker({cfg,site:temp+'/site',provider,google,port:4180});}else await new Promise(r=>server.listen(4180,'127.0.0.1',r));await new Promise(r=>pages.listen(4179,'127.0.0.1',r));let browser;
 try{
  browser=await chromium.launch({headless:true,executablePath:process.env.DEMO_CHROMIUM_PATH || '/usr/bin/chromium'});
  for(const width of [1440,390]){
@@ -65,6 +66,21 @@ await page.getByRole('button',{name:'Connexion sécurisée REC',exact:true}).cli
   assert.equal(await page.evaluate(()=>localStorage.length),0);
   await page.getByRole('button',{name:'Connexion sécurisée REC',exact:true}).click();await page.frameLocator('.rec-reference-frame').getByText('Référentiel chargé.',{exact:true}).waitFor();
   assert.equal(await page.frameLocator('.rec-reference-frame').locator('#logements tr').count(),12);
+  if(width===390){
+   const ui=page.frameLocator('.rec-reference-frame');
+   await ui.locator('#logement-form [name="numero"]').fill('99');
+   await ui.locator('#logement-form [name="type"]').selectOption({label:'F3'});
+   await ui.locator('#housing-save').click();
+   await ui.getByText('Modification enregistrée. Aucune opération financière créée.',{exact:true}).waitFor();
+   assert.equal(await ui.locator('#logements tr').count(),13);
+   await ui.locator('#logement-edit').selectOption({label:'99'});
+   await ui.locator('#logement-form [name="numero"]').fill('98');
+   await ui.locator('#housing-save').click();
+   await ui.getByText('Modification enregistrée. Aucune opération financière créée.',{exact:true}).waitFor();
+   await ui.locator('#reload').click();await ui.getByText('Référentiel actualisé.',{exact:true}).waitFor();
+   assert.equal(await ui.locator('#logements tr').count(),13);assert.match(await ui.locator('#logements').textContent(),/98/);
+   assert.equal(google.tables.transactions.length,5);
+  }
   await page.getByRole('button',{name:'Synthèse',exact:true}).click();await page.waitForURL('**/#synthese');assert.ok((await page.locator('main').textContent()).includes('Synthèse'));
   await page.getByRole('button',{name:'Paramétrage',exact:true}).click();await page.getByRole('button',{name:'Déconnecter REC',exact:true}).click();await page.getByRole('button',{name:'Connexion sécurisée REC',exact:true}).waitFor();
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await context.close();console.log('OK REC intégrée '+width+'px : OAuth/PKCE, droits, simulation 12/220000, import fictif, persistance, navigation Synthèse, déconnexion.');
@@ -75,4 +91,4 @@ await page.getByRole('button',{name:'Connexion sécurisée REC',exact:true}).cli
   const summary=await page.evaluate(async bytes=>{const parsed=await V2Import.read(new File([Uint8Array.from(bytes)],'reference.xlsx'));const rows=ReferentielV2.normalize(parsed.rows),r=ReferentielV2.simulate(ReferentielV2.empty(),rows,'2026-11-17');return {count:r.total,total:r.totalMensuel,conflicts:r.conflits,created:r.creations};},[...await readFile(process.env.US015_REFERENCE_XLSX)]);
   assert.deepEqual(summary,{count:12,total:220000,conflicts:0,created:12});console.log('OK Excel définitif : simulation locale, 12 lignes, 220000 DA, aucun doublon/conflit sur modèle vide ; aucune donnée créée.');await page.close();
  }
-}finally{await browser?.close();await new Promise(r=>pages.close(r));await new Promise(r=>server.close(r));rmSync(temp,{recursive:true,force:true});}
+}finally{await browser?.close();await new Promise(r=>pages.close(r));if(worker)await worker.close();else await new Promise(r=>server.close(r));rmSync(temp,{recursive:true,force:true});}
