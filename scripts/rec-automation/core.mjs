@@ -22,7 +22,7 @@ function mutatingReview(request, state) {
   // gel des exécutions et audit des déclencheurs de CHAQUE compte propriétaire.
 }
 function safeCurrent(state,policy) {
-  privateManifest(state.content.manifest,{baseline:true});
+  privateManifest(state.content.manifest,{baseline:true,gatewayTransport:policy.gatewayTransport});
   deploymentState(state.deployments,policy);
   const versioned=state.deployments.filter(d=>d.deploymentConfig?.versionNumber!==undefined);
   requireThat(versioned.every(d=>d.deploymentId===policy.deploymentId),'UNEXPECTED_EXISTING_DEPLOYMENT');
@@ -51,7 +51,7 @@ function backupValue(saved,policy,expectedHash) {
   const b=saved.value;
   requireThat(b.schema===1 && b.kind==='backup' && b.targetHash===policy.pins.scriptHash && b.sheetHash===policy.pins.sheetHash && b.account===policy.email,'WRONG_BACKUP_TARGET');
   requireThat(contentHash(b.content)===b.headHash,'CORRUPT_BACKUP');
-  privateManifest(contentOf(b.content).manifest,{baseline:true});
+  privateManifest(contentOf(b.content).manifest,{baseline:true,gatewayTransport:policy.gatewayTransport});
   deploymentState(b.deployments,policy);
   return b;
 }
@@ -66,7 +66,7 @@ export async function operate({request,api,store,policy,now=()=>new Date().toISO
     return result;
   }
   requireThat(isTag(request.requestTag),'INVALID_REQUEST_TAG');
-  const candidate=['install','deploy'].includes(request.operation)?candidateOf(request.candidate):null;
+  const candidate=['install','deploy'].includes(request.operation)?candidateOf(request.candidate,{gatewayTransport:policy.gatewayTransport}):null;
   const intent={operation:request.operation,sourceHash:candidate?.contentHash || null,
     sourceSha:candidate?.sourceSha || null,expectedHeadHash:request.expectedHeadHash,
     backupTag:request.backupTag || null,backupHash:request.backupHash || null,
@@ -100,7 +100,7 @@ export async function operate({request,api,store,policy,now=()=>new Date().toISO
       requireThat(d,'NO_PREVIOUS_PRIVATE_DEPLOYMENT');checkDeployment(d,policy);
       restoreVersion=d.deploymentConfig.versionNumber;
       const version=await api.getContent(restoreVersion);
-      requireThat(version.scriptId===policy.scriptId,'WRONG_CONTENT_TARGET');privateManifest(contentOf(version).manifest);
+      requireThat(version.scriptId===policy.scriptId,'WRONG_CONTENT_TARGET');privateManifest(contentOf(version).manifest,{gatewayTransport:policy.gatewayTransport});
     }
   } else desired=candidate;
   if(request.operation==='install')requireThat(state.content.files.every(f=>desired.files.some(d=>d.name===f.name && d.type===f.type)),'REMOTE_FILE_REMOVAL_REFUSED');
@@ -137,7 +137,7 @@ export async function operate({request,api,store,policy,now=()=>new Date().toISO
     versionNumber=version.versionNumber;
     const snapshot=await api.getContent(versionNumber);
     requireThat(snapshot.scriptId===policy.scriptId && contentHash(snapshot)===candidate.contentHash,'VERSION_CONTENT_CHANGED');
-    privateManifest(contentOf(snapshot).manifest);
+    privateManifest(contentOf(snapshot).manifest,{gatewayTransport:policy.gatewayTransport});
     await checkUnchanged(api,policy,state);
     deployment=policy.deploymentId?
       await api.updateDeployment(policy.deploymentId,versionNumber,'REC '+candidate.sourceSha+' '+record.tag):

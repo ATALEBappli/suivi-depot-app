@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {site} from '../../rec-server/site.mjs';
+import {hex} from '../../rec-server/security.mjs';
+const files=['index.html','styles.css','app.mjs','model.mjs','finance-data.mjs','finance-model.mjs','finance-view.mjs','rec-client.mjs','referentiel/index.html','referentiel/transport.js','referentiel/referentiel-v2-model.js','referentiel/referentiel-v2-import.js','referentiel/referentiel-v2.js','referentiel/referentiel-v2.css'];
+function fixture(){const dir=mkdtempSync(tmpdir()+'/rec-site-'),manifest={schema:1,repository:'ATALEBappli/suivi-depot-demo',sourceSha:'f'.repeat(40),files:[]};for(const p of files){mkdirSync(dir+'/'+p.split('/').slice(0,-1).join('/'),{recursive:true});writeFileSync(dir+'/'+p,'fixture');manifest.files.push({path:p,sha256:hex('fixture')});}writeFileSync(dir+'/manifest.json',JSON.stringify(manifest));return {dir,manifest};}
+test('assets vérifiés et config publique seule ; fichiers privés inaccessibles',()=>{const f=fixture();try{const serve=site(f.dir,'https://rec-fictif.run.app'),headers={};let data;const res={setHeader:(k,v)=>headers[k]=v,writeHead:(s,h)=>Object.assign(headers,h),end:b=>data=b};assert.equal(serve('/',res),true);assert.match(headers['Content-Security-Policy'],/connect-src 'self'/);serve('/rec-config.mjs',res);assert.equal(data.includes('client_secret'),false);assert.equal(serve('/security.mjs',res),false);assert.equal(serve('/.env',res),false);assert.equal(serve('/manifest.json',res),false);}finally{rmSync(f.dir,{recursive:true,force:true});}});
+test('asset modifié ou chemin de secret dans le manifeste : démarrage refusé',()=>{for(const mode of ['tamper','secret']){const f=fixture();try{if(mode==='tamper')writeFileSync(f.dir+'/app.mjs','changed');else{f.manifest.files.push({path:'../.env',sha256:'0'.repeat(64)});writeFileSync(f.dir+'/manifest.json',JSON.stringify(f.manifest));}assert.throws(()=>site(f.dir,'https://rec-fictif.run.app'));}finally{rmSync(f.dir,{recursive:true,force:true});}}});

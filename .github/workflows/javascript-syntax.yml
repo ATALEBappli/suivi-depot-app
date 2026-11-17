@@ -22,7 +22,7 @@ jobs:
         run: node scripts/check-js.mjs
 
       - name: Tester l'automatisation REC sur doublures sans secrets
-        run: node --test tests/rec-automation/*.test.mjs
+        run: node --test tests/rec-automation/*.test.mjs tests/rec-server/*.test.mjs
       - name: Vérifier le référentiel V2 et ses régressions sans réseau
         run: |
           node tests/referentiel-v2.mjs

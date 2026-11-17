@@ -87,3 +87,12 @@ test('nouvelle interface : modèle commun et lecteur Excel intégrés, toujours 
  const html=c.files.find(f=>f.name==='ParametrageV2').source;
  assert.equal(c.files.length,5);assert.ok(html.includes('var Modele'));assert.ok(html.includes('var V2Import'));assert.doesNotMatch(html,/<script[^>]+src=/);
 });
+test('mode passerelle explicite : ancien source sans gardes refusé, défaut toujours privé',()=>{
+ assert.throws(()=>packageCommit(sha,source(),{gatewayTransport:true}),/GATEWAY_GUARDS_MISSING/);
+ const guarded=source({
+  'apps-script/src/Code.gs':"const REC_SIGNED_TRANSPORT = false;function _recLegacyActor_(){if(REC_SIGNED_TRANSPORT)throw new Error('AUTH_REQUIRED');}function doPost(body){if(body?.action==='rec.gateway')return _recGateway_(body);try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}}\nfunction doGet(e) {\n  try{_recLegacyActor_();}catch{return _json_({ok:false,error:'FORBIDDEN'});}}",
+  'apps-script/src/ReferentielV2Api.gs':"function _recGateway_(body){if(REC_SIGNED_TRANSPORT)throw new Error('FORBIDDEN');const p={getProperty:()=>''};return p.getProperty('REC_GATEWAY_KEY');}"
+ });
+ const privateCandidate=packageCommit(sha,guarded);assert.equal(privateCandidate.manifest.webapp.access,'MYSELF');
+ const signed=packageCommit(sha,guarded,{gatewayTransport:true});assert.equal(signed.manifest.webapp.access,'ANYONE_ANONYMOUS');assert.equal(signed.files.length,5);assert.match(signed.files.find(f=>f.name==='Code').source,/const REC_SIGNED_TRANSPORT = true;/);
+});

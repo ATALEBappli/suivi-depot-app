@@ -1,0 +1,7 @@
+*
+!*.mjs
+!package.json
+!Dockerfile
+!.dockerignore
+!public/
+!public/**
