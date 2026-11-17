@@ -9,6 +9,10 @@ on:
         default: inspect
         required: true
         options: [inspect, install, deploy, restore]
+      gateway_transport:
+        type: boolean
+        description: Après autorisation distincte uniquement — transport signé REC (point HTTP joignable, données protégées), conserver le déploiement existant
+        default: false
       source_sha:
         type: string
         description: SHA complet approuvé (install/deploy uniquement)
@@ -71,6 +75,7 @@ jobs:
         if: inputs.operation == 'install' || inputs.operation == 'deploy'
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
+          REC_GATEWAY_TRANSPORT: ${{ inputs.gateway_transport }}
         run: node scripts/rec-automation/cli.mjs package "$RUNNER_TEMP/bundle.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: inputs.operation == 'install' || inputs.operation == 'deploy'
@@ -107,6 +112,7 @@ jobs:
           REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
           REC_OPERATION: ${{ inputs.operation }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          REC_GATEWAY_TRANSPORT: ${{ inputs.gateway_transport }}
           REC_EXPECTED_BUNDLE_HASH: ${{ needs.prepare.outputs.content_hash }}
           REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
           REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}

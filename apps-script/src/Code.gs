@@ -1,4 +1,4 @@
-/**************** Suivi Dépôt — garde-fous REC, sans authentification métier ****************/
+/**************** Suivi Dépôt — garde-fous REC et accès authentifiés ****************/
 // Valeurs privées dans les propriétés du projet uniquement. Aucun repli.
 const SCHEMAS = {
   transactions: ['type','date','montant','sous_bloc','description','local','locataire','fournisseur','periode','moyen','personne'],
@@ -10,6 +10,7 @@ function _checkedSheets_() {
   const p = PropertiesService.getScriptProperties();
   const id = p.getProperty('SPREADSHEET_ID');
   const allowed = p.getProperty('REC_SPREADSHEET_ID');
+  if(typeof _recVerifiedActor_!=='undefined' && _recVerifiedActor_ && id!==_recVerifiedActor_.targetId)throw new Error('INVALID_ENVIRONMENT');
   if (p.getProperty('APP_ENV') !== 'REC' || !id || id.trim() !== id || id !== allowed) throw new Error('INVALID_ENVIRONMENT');
   const ss = SpreadsheetApp.openById(id);
   if (!ss || ss.getId() !== allowed) throw new Error('INVALID_ENVIRONMENT');
@@ -84,11 +85,22 @@ function _json(obj, callback) {
     .createTextOutput(payload)
     .setMimeType(ContentService.MimeType.JSON);
 }
+// Les anciens points d'entrée restent privés même si le transport Web est ouvert
+// ultérieurement pour la passerelle authentifiée. Aucun accès anonyme aux lectures.
+function _recLegacyActor_() {
+  const p=PropertiesService.getScriptProperties();
+  if(p.getProperty('APP_ENV')!=='REC')throw new Error('AUTH_REQUIRED');
+  const email=typeof Session!=='undefined'?Session.getActiveUser().getEmail():'';
+  if(!email || email!==p.getProperty('V2_ADMIN_EMAIL'))throw new Error('AUTH_REQUIRED');
+  return email;
+}
 /** POST JSON => ajoute une ligne */
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) throw new Error('INVALID_INPUT');
     const body = JSON.parse(e.postData.contents);
+    if(body?.action==='rec.gateway')return _recGateway_(body);
+    try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}
     if (typeof body?.action === 'string' && body.action.startsWith('v2.')) {
       try { return _json(_v2Write_(body)); } catch(err) { return _json(_v2Error_(err)); }
     }
@@ -157,6 +169,7 @@ function _readConfigHedam_() {
 function _writeConfigHedam_(rows) { _replaceConfig_('config_hedam', rows); }
 /*************** doGet: CONFIG + ADD + LECTURE ***************/
 function doGet(e) {
+  try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}
   const cb = (e && e.parameter && e.parameter.callback)
     ? String(e.parameter.callback)
     : null;

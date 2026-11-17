@@ -9,7 +9,7 @@ assert.equal(manifest.webapp.access,'MYSELF');
 function setup(properties={}, mutate=()=>{}) {
   const data=structuredClone(fixtures), writes=[], opens=[];
   mutate(data);
-  const props={APP_ENV:'REC',SPREADSHEET_ID:'MOCK_REC',REC_SPREADSHEET_ID:'MOCK_REC',...properties};
+  const props={V2_ADMIN_EMAIL:'admin@example.invalid',APP_ENV:'REC',SPREADSHEET_ID:'MOCK_REC',REC_SPREADSHEET_ID:'MOCK_REC',...properties};
   const sheets=Object.fromEntries(Object.entries(data).map(([name,rows])=>[name,{
     getLastRow:()=>rows.length, getLastColumn:()=>Math.max(0,...rows.map(r=>r.length)),
     getDataRange:()=>({getValues:()=>structuredClone(rows)}),
@@ -20,7 +20,7 @@ function setup(properties={}, mutate=()=>{}) {
     appendRow(row){assert.equal(row.length,11);writes.push('appendRow');rows.push([...row]);}
   }]));
   const book={getId:()=> 'MOCK_REC',getSheetByName:name=>sheets[name]};
-  const api=vm.createContext({PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]})},
+  const api=vm.createContext({Session:{getActiveUser:()=>({getEmail:()=> 'admin@example.invalid'})},PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]})},
     SpreadsheetApp:{openById(id){opens.push(id);return book;}},
     ContentService:{MimeType:{JSON:'json',JAVASCRIPT:'js',TEXT:'text'},createTextOutput:text=>({text,setMimeType(mime){this.mime=mime;return this;}})}});
   vm.runInContext(source,api);

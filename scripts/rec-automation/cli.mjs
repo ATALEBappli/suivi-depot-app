@@ -20,7 +20,7 @@ export async function main(args=process.argv.slice(2),env=process.env) {
   const [mode,file]=args;
   if(mode==='package') {
     requireThat(typeof file==='string','MISSING_OUTPUT_PATH');
-    const value=packageCommit(env.SOURCE_SHA);writeFileSync(file,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});
+    const value=packageCommit(env.SOURCE_SHA,undefined,{gatewayTransport:env.REC_GATEWAY_TRANSPORT==='true'});writeFileSync(file,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});
     if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,'content_hash='+value.contentHash+'\n');
     summary({sourceSha:value.sourceSha,contentHash:value.contentHash,files:value.files.length},env);return;
   }

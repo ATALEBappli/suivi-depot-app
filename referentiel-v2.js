@@ -4,9 +4,11 @@
   const N=ReferentielV2.normalizers;
   const errors={INVALID_IMPORT:'Le fichier doit contenir entre 1 et 5 000 logements.',AMBIGUOUS_TENANT:'Plusieurs fiches correspondent à ce locataire. Vérifiez le référentiel avant import.',INVALID_TEXT:'Un champ obligatoire est vide ou contient une valeur interdite.',INVALID_AMOUNT:'Montant invalide : utiliser un nombre positif ou nul avec deux décimales maximum.',INVALID_DATE:'Date invalide.',OVERLAPPING_BAILS:'Une location existe déjà sur cette période. Renseignez son départ avant de créer la suivante.',INVALID_RENT_EFFECT:'La date du nouveau loyer doit être aujourd’hui ou ultérieure, après les versions existantes.',DUPLICATE_TENANT:'Ce locataire existe déjà.',INVALID_LOGEMENT:'Numéro déjà utilisé ou logement invalide.',DUPLICATE_NUMBER:'Deux lignes portent le même numéro après normalisation.',INACTIVE_OR_UNKNOWN_REFERENCE:'Type ou étage absent des valeurs actives. Vérifiez le Paramétrage.',DUPLICATE_REFERENCE:'Cette valeur existe déjà.',REFERENCE_IN_USE:'Cette valeur est utilisée : elle peut être désactivée, mais pas renommée.',V2_DISABLED:'Les écritures V2 ne sont pas activées en REC.',STALE_REVISION:'Le référentiel a changé. Actualisez puis recommencez.',IMPORT_CONFLICT:'Import en conflit : aucune donnée remplacée.'};
   let loaded, pendingImport=null, pendingWrite=null, busy=false;
+  const writable=()=>!!loaded?.active && loaded?.canWrite!==false;
   const $=id=>document.getElementById(id), today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris'}).format(new Date());
   const message=t=>{$('message').textContent=t;};
   function api(body) {
+    if(typeof window.recReferenceRequest==='function')return window.recReferenceRequest(body);
     if(window.google?.script?.run)return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(()=>reject(Error('Appel REC interrompu ; actualisez avant de réessayer.'))).v2Client(body));
     // Le transport HTTP est réservé au serveur local ; aucune URL Google par défaut.
     if(!['localhost','127.0.0.1'].includes(location.hostname))return Promise.reject(Error('Ouvrir le Paramétrage depuis le backend REC privé (action=v2.ui).'));
@@ -15,7 +17,7 @@
   async function call(body) {const r=await api(body);if(!r.ok){const e=Error(errors[r.error] || r.error || 'Échec de la demande');e.authoritative=r.error!=='V2_REQUEST_FAILED';throw e;}return r;}
   async function guarded(fn) {
     if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>{b.disabled=true;});
-    try{await fn();}catch(e){message(e.message);}finally{busy=false;document.querySelectorAll('button').forEach(b=>{b.disabled=false;});$('import-apply').disabled=!pendingImport || !loaded?.active;document.querySelectorAll('form button').forEach(b=>{b.disabled=!loaded?.active;});}
+    try{await fn();}catch(e){message(e.message);}finally{busy=false;document.querySelectorAll('button').forEach(b=>{b.disabled=false;});$('import-apply').disabled=!pendingImport || !writable();document.querySelectorAll('form button').forEach(b=>{b.disabled=!writable();});}
   }
   const cell=(row,value)=>{const td=document.createElement('td');td.textContent=value;row.append(td);return td;};
   const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',fn);return b;};
@@ -80,11 +82,11 @@
     $('numeros').replaceChildren();for(const n of new Set([...Array.from({length:20},(_,i)=>String(i+1).padStart(2,'0')),...s.logements.map(l=>N.numero(l.numero))])){const o=document.createElement('option');o.value=n;$('numeros').append(o);}
     $('history').textContent=JSON.stringify(s.historique,null,2);
     $('environment').textContent=`REC${window.google?.script?' privé':' local fictif — données en mémoire'} — révision ${loaded.revision} — V2 ${loaded.active?'active':'inactive (lecture/simulation uniquement)'}`;
-    document.querySelectorAll('form button').forEach(b=>{b.disabled=!loaded.active;});renderBaux();
+    document.querySelectorAll('form button').forEach(b=>{b.disabled=!writable();});renderBaux();
   }
   async function load(){loaded=await call({action:'v2.read'});pendingImport=null;pendingWrite=null;render();}
   async function write(command){
-    if(!loaded.active)throw Error('Référentiel V2 inactif.');
+    if(!writable())throw Error('Écriture non autorisée : V2 inactive ou accès en lecture seule.');
     if(pendingWrite && JSON.stringify(pendingWrite.command)!==JSON.stringify(command))throw Error('Une écriture reste incertaine. Réessayez la même demande ou actualisez le référentiel.');
     pendingWrite ??= {action:'v2.write',requestId:crypto.randomUUID(),expectedRevision:loaded.revision,command};
     try{await call(pendingWrite);}catch(e){if(e.authoritative)pendingWrite=null;throw e;}

@@ -164,3 +164,12 @@ test('liste des versions : GET limité au projet REC et pagination bornée',asyn
  await api.authenticate(credentials);await assert.rejects(()=>api.versions(),/TOO_MANY_VERSIONS/);
  assert.equal(calls.length,6);for(const c of calls.slice(1)){assert.equal(c.method,'GET');assert.ok(c.url.startsWith('https://script.googleapis.com/v1/projects/'+policy.scriptId+'/versions?'));}
 });
+test('transport HTTP signé : opt-in et déploiement existant obligatoires ; permissions par défaut inchangées',async()=>{
+ const {deployment,policy:fixedPolicy}=await import('./helpers.mjs');const {checkDeployment,privateManifest,policyFromEnv,TARGET}=await import('../../scripts/rec-automation/validation.mjs');
+ const d=deployment();d.entryPoints[0].webApp.entryPointConfig.access='ANYONE_ANONYMOUS';
+ assert.throws(()=>checkDeployment(d,fixedPolicy),/PUBLIC_DEPLOYMENT_REFUSED/);checkDeployment(d,{...fixedPolicy,gatewayTransport:true});
+ const m={runtimeVersion:'V8',webapp:{access:'ANYONE_ANONYMOUS',executeAs:'USER_DEPLOYING'}};
+ assert.throws(()=>privateManifest(m),/UNSAFE_MANIFEST/);privateManifest(m,{gatewayTransport:true});
+ assert.throws(()=>privateManifest({...m,executionApi:{}},{gatewayTransport:true}),/UNSAFE_MANIFEST/);
+ assert.throws(()=>policyFromEnv({REC_SCRIPT_ID:fixedPolicy.scriptId,REC_SHEET_ID:fixedPolicy.sheetId,REC_OWNER_EMAIL:fixedPolicy.ownerEmail,REC_GOOGLE_EMAIL:fixedPolicy.email,REC_GATEWAY_TRANSPORT:'true'},fixedPolicy.pins),/GATEWAY_REQUIRES_EXISTING_DEPLOYMENT/);
+});

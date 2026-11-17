@@ -2,7 +2,7 @@
 import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {candidateOf,contentHash,isSha,requireThat} from './validation.mjs';
-export function packageCommit(sha, git=(...args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:3000000})) {
+export function packageCommit(sha, git=(...args)=>execFileSync('git',args,{encoding:'utf8',maxBuffer:3000000}),{gatewayTransport=false}={}) {
   requireThat(isSha(sha),'INVALID_SOURCE_SHA');
   requireThat(git('rev-parse',sha+'^{commit}').trim()===sha,'SOURCE_COMMIT_NOT_FOUND');
   function read(path) {
@@ -28,6 +28,10 @@ export function packageCommit(sha, git=(...args)=>execFileSync('git',args,{encod
   }
   requireThat(!/<script[^>]+src=|<link[^>]+href=/i.test(html),'EXTERNAL_ASSETS');
   files.push({name:'ParametrageV2',type:'HTML',source:html},{name:'appsscript',type:'JSON',source:read('apps-script/src/appsscript.json')});
+  if(gatewayTransport){
+    requireThat(files[0].source.includes("if(body?.action==='rec.gateway')return _recGateway_(body);") && files[0].source.includes("function doGet(e) {\n  try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}") && files[0].source.split("try{_recLegacyActor_();}catch{return _json({ok:false,error:'FORBIDDEN'});}").length===3 && files[2].source.includes('function _recGateway_(body)') && files[2].source.includes("p.getProperty('REC_GATEWAY_KEY')"),'GATEWAY_GUARDS_MISSING');
+    const f=files.find(f=>f.name==='appsscript'),m=JSON.parse(f.source);m.webapp={access:'ANYONE_ANONYMOUS',executeAs:'USER_DEPLOYING'};f.source=JSON.stringify(m,null,2)+'\n';
+  }
   const candidate={schema:1,sourceSha:sha,files,contentHash:contentHash({files})};
-  return candidateOf(candidate);
+  return candidateOf(candidate,{gatewayTransport});
 }

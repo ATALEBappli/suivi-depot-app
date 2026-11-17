@@ -25,11 +25,12 @@ const email = value => typeof value==='string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.t
 
 export function policyFromEnv(env, pins=TARGET) {
   const policy={scriptId:env.REC_SCRIPT_ID,sheetId:env.REC_SHEET_ID,email:env.REC_GOOGLE_EMAIL,
-    ownerEmail:env.REC_OWNER_EMAIL,deploymentId:env.REC_DEPLOYMENT_ID || '',pins};
+    ownerEmail:env.REC_OWNER_EMAIL,deploymentId:env.REC_DEPLOYMENT_ID || '',gatewayTransport:env.REC_GATEWAY_TRANSPORT==='true',pins};
   requireThat(id(policy.scriptId) && digest(policy.scriptId)===pins.scriptHash,'WRONG_SCRIPT_TARGET');
   requireThat(id(policy.sheetId) && digest(policy.sheetId)===pins.sheetHash,'WRONG_SHEET_TARGET');
   requireThat(email(policy.email) && email(policy.ownerEmail),'INVALID_ACCOUNT_CONFIGURATION');
   requireThat(!policy.deploymentId || id(policy.deploymentId),'INVALID_DEPLOYMENT_CONFIGURATION');
+  requireThat(!policy.gatewayTransport || id(policy.deploymentId),'GATEWAY_REQUIRES_EXISTING_DEPLOYMENT');
   return Object.freeze({...policy,pins:Object.freeze({...pins})});
 }
 
@@ -51,18 +52,18 @@ export function contentOf(response) {
   return {files,manifest};
 }
 export function contentHash(response) {return digest(contentOf(response).files);}
-export function privateManifest(manifest, {baseline=false}={}) {
+export function privateManifest(manifest, {baseline=false,gatewayTransport=false}={}) {
   requireThat(manifest.runtimeVersion==='V8' && !manifest.executionApi,'UNSAFE_MANIFEST');
   if(baseline && manifest.webapp===undefined)return;
-  requireThat(manifest.webapp?.access==='MYSELF' && manifest.webapp?.executeAs==='USER_DEPLOYING','UNSAFE_MANIFEST');
+  requireThat((manifest.webapp?.access==='MYSELF' || (gatewayTransport && manifest.webapp?.access==='ANYONE_ANONYMOUS')) && manifest.webapp?.executeAs==='USER_DEPLOYING','UNSAFE_MANIFEST');
   requireThat(Object.keys(manifest.webapp).every(k=>['access','executeAs'].includes(k)),'UNSAFE_MANIFEST');
 }
-export function candidateOf(candidate) {
+export function candidateOf(candidate,options={}) {
   requireThat(candidate?.schema===1 && isSha(candidate.sourceSha),'INVALID_CANDIDATE');
   const result=contentOf(candidate);
   const expected={Code:'SERVER_JS',ReferentielV2:'SERVER_JS',ReferentielV2Api:'SERVER_JS',ParametrageV2:'HTML',appsscript:'JSON'};
   requireThat(result.files.length===5 && result.files.every(f=>expected[f.name]===f.type),'WRONG_BUNDLE');
-  privateManifest(result.manifest);
+  privateManifest(result.manifest,options);
   requireThat(candidate.contentHash===contentHash(result),'CANDIDATE_HASH_MISMATCH');
   return {...candidate,...result};
 }
@@ -96,7 +97,7 @@ export function checkDeployment(deployment, policy, expectedVersion) {
   requireThat(typeof deployment.deploymentId==='string' && id(deployment.deploymentId),'INVALID_DEPLOYMENT_ID');
   requireThat(deployment.entryPoints?.length===1 && deployment.entryPoints[0].entryPointType==='WEB_APP','UNEXPECTED_ENTRY_POINTS');
   const web=deployment.entryPoints[0].webApp;
-  requireThat(web?.entryPointConfig?.access==='MYSELF' && web.entryPointConfig.executeAs==='USER_DEPLOYING','PUBLIC_DEPLOYMENT_REFUSED');
+  requireThat((web?.entryPointConfig?.access==='MYSELF' || (policy.gatewayTransport && web?.entryPointConfig?.access==='ANYONE_ANONYMOUS')) && web.entryPointConfig.executeAs==='USER_DEPLOYING','PUBLIC_DEPLOYMENT_REFUSED');
   requireThat(typeof web.url==='string' && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(web.url),'INVALID_WEB_APP_URL');
 }
 export function deploymentState(deployments, policy, {inspect=false}={}) {
