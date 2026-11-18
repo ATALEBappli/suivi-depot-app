@@ -1,5 +1,5 @@
 import {DurableObject} from 'cloudflare:workers';
-import {config} from '../rec-server/security.mjs';
+import {config,frontendConfig} from '../rec-server/security.mjs';
 import {routes,authHandler,failure} from './routes.mjs';
 import {durableStore} from './store.mjs';
 import manifest from './generated-manifest.mjs';
@@ -9,5 +9,5 @@ export class RecAuth extends DurableObject {
  async alarm(){await durableStore(this.storage).cleanup();}
 }
 export default {
- async fetch(request,env){try{return await routes(config(env,{hosting:'cloudflare'}),env,manifest)(request);}catch{return failure();}}
+ async fetch(request,env){try{return await routes(frontendConfig(env,{hosting:'cloudflare'}),env,manifest,{beforeAuth:()=>config(env,{hosting:'cloudflare'})})(request);}catch{return failure();}}
 };

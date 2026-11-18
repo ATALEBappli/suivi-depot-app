@@ -93,6 +93,35 @@ Le workflow REC-Maintenance existant est étendu aux tests, pas au déploiement.
 Le harness de test est séparé de l'entrée réelle worker.mjs : ses identités fictives
 et services Google simulés ne sont jamais importés par le bundle de déploiement.
 
+## Premier affichage sans secrets
+
+Le premier déploiement peut maintenant servir les seuls assets publics vérifiés
+avec APP_ENV=REC et REC_SERVER_URL=<ORIGINE_WORKERS_CONFIRMEE>. Il conserve
+REC_BACKEND_ENABLED=false, REC_USER_ALLOWLIST=[] et observability.enabled=false.
+Aucune valeur factice de secret ni ouverture Google n'est nécessaire pour afficher
+l'interface. Les routes OAuth et API exigent toujours la configuration complète
+avant même de solliciter le Durable Object : sans celle-ci, HTTP 503 générique,
+sans jeton ni appel Google. Afficher la navigation n'est pas réussir le login Hotmail.
+
+L'entrée de production est testée dans workerd sans secrets : assets/CSP, config
+publique minimale, absence de fichiers privés, fermeture de toutes les routes
+OAuth/API, rejet d'une origine différente et d'un environnement PROD. Les tests
+OAuth/SQLite et HMAC antérieurs restent applicables après configuration complète.
+
+Le Worker existant doit être mis à jour avec le nom exact suivi-depot-rec, jamais
+créé sous un nom de remplacement. La migration SQLite et sa liaison REC_AUTH sont
+déjà dans wrangler.jsonc. Ne pas remplacer le Worker par un simple upload statique
+ni utiliser l'ancien formulaire de copie Code.gs. Conserver la version Hello World
+comme retour arrière de déploiement, sans la supprimer.
+
+Si Cloudflare est refusé par le proxy Codex : ajouter exactement dash.cloudflare.com,
+api.cloudflare.com et l'hôte REC workers.dev aux domaines autorisés de l'environnement.
+Ne pas désactiver le proxy ou la validation TLS, ni réutiliser l'accès de DZKoora.
+Autre voie : lancer les mêmes commandes préparées depuis une machine autorisée,
+avec connexion Wrangler interactive locale ; jamais demander un token dans le chat.
+L'autorisation de déployer et la présence d'un accès authentifié sont deux prérequis
+distincts. Un code local 200 n'atteste pas l'état du Worker Cloudflare distant.
+
 ## Configuration future, UNE action à la fois après autorisations
 
 1. Identifier/connecter un compte Cloudflare et confirmer Workers Free sans upgrade.
@@ -109,7 +138,8 @@ et services Google simulés ne sont jamais importés par le bundle de déploieme
    REC_SERVER_URL=<ORIGINE>, REC_APPS_SCRIPT_URL=<exec REC existant, pin contrôlé>,
    REC_OAUTH_CLIENT_ID=<client Web REC>. Secrets Worker REC_OAUTH_CLIENT_SECRET,
    REC_GATEWAY_KEY ; REC_USER_ALLOWLIST=[] au départ. REC_BACKEND_ENABLED=false.
-   Le runtime refuse une configuration incomplète ; aucun secret généré ici.
+   Les entrées privées refusent une configuration incomplète ; les assets publics
+   exigent seulement APP_ENV et REC_SERVER_URL. Aucun secret généré ici.
    Commande future interactive, seulement après accord :
 
        cd rec-worker
@@ -155,3 +185,68 @@ Synthèse demeure fictive et aucun écran Saisie autonome raccordé n'est prése
 le main frontend fusionné. Cette adaptation livre toute l'US-015 implémentée ; elle
 n'invente ni écran financier ni mouvement de caution. Aucune modification de PROD,
 des données, permissions, secrets Google, déploiement ou journal pending réalisée.
+
+## Publication manuelle GitHub Actions de l'interface seule
+
+Workflow ajouté dans la PR #22 : `.github/workflows/rec-worker-manual.yml`.
+Il est nécessaire car les workflows de mutation existants ciblent Apps Script,
+qui est explicitement hors périmètre de cette publication Cloudflare. Le workflow
+REC-Maintenance existant vérifie aussi le bundle compilé localement en CI.
+Aucun lancement n'est effectué pendant cette préparation.
+
+Après revue, validation et fusion séparée de la PR #22 dans main :
+https://github.com/ATALEBappli/suivi-depot-app/actions/workflows/rec-worker-manual.yml
+
+Depuis iPhone : Actions → ce workflow → Run workflow → branche main → cocher la
+confirmation du Worker existant et de l'offre Free → Run workflow. Si REC exige
+une approbation, lire d'abord la synthèse du job prepare (source SHA + empreinte
+SHA-256), puis approuver dans Review deployments. Le workflow n'existe dans la
+liste des actions exécutables qu'après son intégration dans la branche par défaut.
+Ne pas lancer avant la validation du propriétaire.
+
+Aucune nouvelle variable GitHub n'est nécessaire. Seul CLOUDFLARE_API_TOKEN de
+l'environnement REC est transmis à la dernière étape du job publish. Le jeton
+existant doit autoriser lecture et modification des scripts Workers du compte
+REC : le précontrôle confirme le sous-domaine et lit les settings du seul Worker
+suivi-depot-rec. Il s'arrête si le Worker manque, si le token ne permet pas cette
+lecture ou si des bindings/secrets/configurations inattendus sont déjà présents.
+Aucun endpoint de facturation/abonnement ni autre Worker n'est ciblé. Le plan Free
+est confirmé par la case du déclenchement ; la lecture des settings ne prouve pas
+le plan commercial et ne nécessite pas d'ajouter des droits Billing au jeton.
+
+Le job prepare n'a aucun secret : checkout du SHA exact du workflow main et du
+frontend approuvé, npm ci avec verrouillage, tests, compilation Wrangler dry-run,
+artefact contenant uniquement le JS compilé, les assets publics, la configuration
+fixe et un reçu d'empreintes. Les sources/maps/credentials ne sont pas exportées.
+La liaison Static Assets réelle est testée dans workerd avec CES octets compilés,
+pas seulement avec un faux serveur de fichiers. html_handling=none évite les
+redirections canoniques index.html incompatibles avec la vérification des octets.
+La CSP et les gardes restent appliquées par le Worker avant les assets.
+
+Après approbation REC, publish récupère l'artefact immutable du même run, vérifie
+son empreinte, ses sources, les fichiers autorisés et la configuration exacte :
+compte/Worker fixes, migrations SQLite RecAuth, backend false, allowlist vide,
+origine REC uniquement, aucun secret OAuth/HMAC, aucune route custom, logs et tail
+consumers désactivés. Aucun input ne permet de changer ces paramètres. Seul le
+script main approuvé a accès au token ; npm ci et les tests n'en disposent pas.
+Wrangler réutilise le JS compilé avec --no-bundle et sans découverte de modules
+supplémentaires. Ses sorties brutes ne sont pas reproduites ; son fichier de debug
+est redirigé vers /dev/null, la sanitisation forcée et ses métriques désactivées. Les erreurs API sont
+réduites à des codes fixes, sans corps, headers ou token. Aucune réponse API brute,
+log Wrangler, configuration privée ou secret n'est téléversé comme artefact.
+
+Après publication, contrôles HTTP strictement sur l'origine REC : racine et tous
+les assets identiques aux empreintes, config publique exacte, fichiers privés
+inaccessibles, routes OAuth/API fermées (503 de configuration), settings/DO et
+collecte de logs contrôlés. Aucun appel Google. La synthèse n'annonce l'URL vérifiée
+que lorsque tous ces contrôles passent. Si la propagation ou le CPU Free fait
+échouer un contrôle, le run échoue, sans affirmer que Hello World est toujours
+publié : l'écriture peut avoir réussi. Pas de second deploy, de suppression, de
+restore ou de rollback automatique. Conserver l'artefact et le reçu du run pour une
+vérification en lecture seule avant toute reprise. Les artefacts expirent après
+7 jours ; la synthèse conserve le SHA et le hash. Les versions Cloudflare antérieures
+ne sont pas supprimées. Aucun état Apps Script/pending n'est lu ou modifié.
+
+La protection REC (reviewers et branches autorisées) reste celle déjà configurée
+par le propriétaire ; ce workflow ne la modifie pas. La fusion dans main et le
+workflow_dispatch sont les autorisations distinctes préalables à la publication.

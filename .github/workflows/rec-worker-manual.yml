@@ -1,0 +1,94 @@
+name: REC Worker — publication manuelle de l’interface
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_existing_free_worker:
+        description: Publier uniquement l’interface sur suivi-depot-rec existant, compte Free confirmé, backend désactivé
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-suivi-depot-rec
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && inputs.confirm_existing_free_worker == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_hash: ${{ steps.release.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: ATALEBappli/suivi-depot-demo
+          ref: 0ee316d7f8f4a34f13f94299c623d6046cd5bc44
+          path: work/rec-frontend
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: npm ci --prefix rec-worker
+      - run: node rec-worker/prepare.mjs work/rec-frontend 0ee316d7f8f4a34f13f94299c623d6046cd5bc44
+      - run: node --test tests/rec-automation/*.test.mjs tests/rec-server/*.test.mjs tests/rec-worker/*.test.mjs
+      - run: node scripts/check-js.mjs && git diff --exit-code && git diff --check
+      - name: Compiler sans secret et sans publication
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+        run: node rec-worker/node_modules/wrangler/bin/wrangler.js deploy --config rec-worker/wrangler.jsonc --dry-run --outdir work/rec-worker-compiled
+      - name: Verrouiller le bundle exact
+        id: release
+        env:
+          SOURCE_SHA: ${{ github.workflow_sha }}
+        run: |
+          node rec-worker/release.mjs create work/rec-worker-compiled rec-server/public work/rec-worker-release "$SOURCE_SHA" > work/rec-worker-release-summary.json
+          node -e 'const fs=require("node:fs"),r=JSON.parse(fs.readFileSync("work/rec-worker-release-summary.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"sha256="+r.sha256+"\n"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"Source : "+r.sourceSha+"\n\nBundle SHA-256 : "+r.sha256+"\n\nBackend désactivé ; aucun secret dans cet artefact.\n");'
+      - name: Tester les octets compilés et la vraie liaison assets locale
+        env:
+          SOURCE_SHA: ${{ github.workflow_sha }}
+          RELEASE_HASH: ${{ steps.release.outputs.sha256 }}
+        run: node tests/rec-worker/release-smoke.mjs work/rec-worker-release "$SOURCE_SHA" "$RELEASE_HASH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rec-worker-release
+          path: work/rec-worker-release/
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: prepare
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && inputs.confirm_existing_free_worker == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: REC
+      url: https://suivi-depot-rec.amine-taleb.workers.dev
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: npm ci --prefix rec-worker
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: rec-worker-release
+          path: work/rec-worker-release
+      - name: Revérifier l’artefact sans secret
+        env:
+          SOURCE_SHA: ${{ github.workflow_sha }}
+          RELEASE_HASH: ${{ needs.prepare.outputs.release_hash }}
+        run: node rec-worker/release.mjs verify work/rec-worker-release "$SOURCE_SHA" "$RELEASE_HASH"
+      - name: Vérifier l’existence, publier le même bundle puis contrôler l’URL REC
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          REC_RELEASE_HASH: ${{ needs.prepare.outputs.release_hash }}
+          REC_PUBLICATION_CONFIRMED: ${{ inputs.confirm_existing_free_worker }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: node rec-worker/publish.mjs work/rec-worker-release
