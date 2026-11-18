@@ -3,7 +3,7 @@ import {readFileSync,lstatSync} from 'node:fs';
 import {resolve,extname} from 'node:path';
 import {hex,requireThat} from './security.mjs';
 const required=['index.html','styles.css','app.mjs','model.mjs','finance-data.mjs','finance-model.mjs','finance-view.mjs','rec-client.mjs','referentiel/index.html','referentiel/transport.js','referentiel/referentiel-v2-model.js','referentiel/referentiel-v2-import.js','referentiel/referentiel-v2.js','referentiel/referentiel-v2.css'];
-const allowed=p=>required.includes(p) || /^assets\/[A-Za-z0-9_-]+\.(svg|woff2|txt|md)$/.test(p);
+const allowed=p=>required.includes(p) || ['location-entry.mjs','location-entry-view.mjs'].includes(p) || /^assets\/[A-Za-z0-9_-]+\.(svg|woff2|txt|md)$/.test(p);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2','.txt':'text/plain','.md':'text/plain'};
 export function site(directory,base) {
  const root=resolve(directory),manifest=JSON.parse(readFileSync(root+'/manifest.json','utf8'));
