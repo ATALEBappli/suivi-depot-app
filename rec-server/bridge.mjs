@@ -1,6 +1,6 @@
 import {mac,equal,requireThat,random,pins} from './security.mjs';
-const actions=new Set(['rec.status','v2.read','v2.simulate','v2.write','v2.import']);
-export function authorized(body,user){requireThat(body && actions.has(body.action),'ACTION_NOT_ALLOWED');if(['v2.write','v2.import'].includes(body.action))requireThat(user.role==='admin','FORBIDDEN');}
+const actions=new Set(['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list']);
+export function authorized(body,user){requireThat(body && actions.has(body.action),'ACTION_NOT_ALLOWED');if(['v2.write','v2.import','rec.testTransaction.create'].includes(body.action))requireThat(user.role==='admin','FORBIDDEN');}
 export function bridge(config,{fetcher=fetch,now=Date.now,nonce=random}={}) {
  async function signed(body,user) {
   const id=nonce(),payload=JSON.stringify({version:1,timestamp:now(),nonce:id,actor:{email:user.email,sub:user.sub},request:body});
