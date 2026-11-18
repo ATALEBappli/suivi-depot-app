@@ -75,7 +75,7 @@ les requêtes invalides. Aucun nouveau workflow Apps Script.
 ## Préparation locale reproductible (aucun accès Cloud)
 
     npm ci --prefix rec-worker
-    node rec-worker/prepare.mjs /chemin/suivi-depot-demo 0ee316d7f8f4a34f13f94299c623d6046cd5bc44
+    node rec-worker/prepare.mjs /chemin/suivi-depot-demo 8cee35c60b77ee4cd01960990c4ad937cf52d2d9
     node --test tests/rec-automation/*.test.mjs tests/rec-server/*.test.mjs tests/rec-worker/*.test.mjs
     WRANGLER_SEND_METRICS=false npm run --prefix rec-worker check
     REC_WORKER_TEST=1 node tests/rec-server/browser.mjs
