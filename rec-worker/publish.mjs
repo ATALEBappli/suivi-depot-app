@@ -7,12 +7,22 @@ import {pathToFileURL} from 'node:url';
 import {target,verifyRelease} from './release.mjs';
 import {requireThat,hex} from '../rec-server/security.mjs';
 export function gate(env){requireThat(env.GITHUB_EVENT_NAME==='workflow_dispatch' && env.GITHUB_REF==='refs/heads/main' && env.GITHUB_REPOSITORY===target.repository && env.GITHUB_SHA===env.GITHUB_WORKFLOW_SHA && /^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '') && env.REC_PUBLICATION_CONFIRMED==='true','MANUAL_MAIN_REC_REQUIRED');}
-export async function cloudflareRead(path,token,fetcher=fetch){
+const workerPath='/workers/scripts/'+target.worker;
+const readSteps=Object.freeze({PRE_WORKER_SUBDOMAIN:workerPath+'/subdomain',PRE_WORKER_SETTINGS:workerPath+'/settings',POST_WORKER_SETTINGS:workerPath+'/settings',POST_LOG_SETTINGS:workerPath+'/script-settings'});
+export async function cloudflareRead(path,token,fetcher=fetch,requestedStep){
  requireThat(typeof token==='string' && token.length>10 && !/\s/.test(token),'MISSING_REC_TOKEN');
- requireThat(['/workers/subdomain','/workers/scripts/'+target.worker+'/settings','/workers/scripts/'+target.worker+'/script-settings'].includes(path),'FORBIDDEN_API_PATH');
- const response=await fetcher('https://api.cloudflare.com/client/v4/accounts/'+target.account+path,{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});
- requireThat(response.ok,'CLOUDFLARE_READ_FAILED_'+response.status);const body=await response.json();requireThat(body.success===true && body.result && typeof body.result==='object','CLOUDFLARE_READ_FAILED');return body.result;
+ const step=requestedStep || Object.keys(readSteps).find(k=>readSteps[k]===path);
+ requireThat(Object.hasOwn(readSteps,step) && readSteps[step]===path,'FORBIDDEN_API_PATH');
+ const failure=reason=>Error('CLOUDFLARE_READ_'+step+'_'+reason);
+ let response;
+ try{response=await fetcher('https://api.cloudflare.com/client/v4/accounts/'+target.account+path,{headers:{Authorization:'Bearer '+token},redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw failure('NETWORK_ERROR');}
+ if(!response.ok)throw failure('HTTP_'+response.status);
+ let body;try{body=await response.json();}catch{throw failure('INVALID_RESPONSE');}
+ if(body?.success!==true || !body.result || typeof body.result!=='object')throw failure('INVALID_RESPONSE');
+ return body.result;
 }
+// Seuls des noms d'étape et raisons prédéfinis peuvent sortir dans les logs.
+export function cloudflareReadErrorCode(error){return /^CLOUDFLARE_READ_(PRE_WORKER_SUBDOMAIN|PRE_WORKER_SETTINGS|POST_WORKER_SETTINGS|POST_LOG_SETTINGS)_(HTTP_[0-9]{3}|NETWORK_ERROR|INVALID_RESPONSE)$/.test(error?.message || '')?error.message:null;}
 export function checkSettings(settings,{after=false}={}){
  const vars=releaseVars();const seen=new Set();
  for(const b of settings.bindings || []){
@@ -39,12 +49,12 @@ export async function verifyPublic(directory,{fetcher=fetch}={}){
 export async function publish(directory,{env=process.env,fetcher=fetch,deploy}={}){
  gate(env);const receipt=verifyRelease(directory,{sourceSha:env.GITHUB_SHA,expectedHash:env.REC_RELEASE_HASH});requireThat(/^[a-f0-9]{64}$/.test(env.REC_RELEASE_HASH || ''),'MISSING_RELEASE_HASH');
  const token=env.CLOUDFLARE_API_TOKEN;
- requireThat((await cloudflareRead('/workers/subdomain',token,fetcher)).subdomain===target.subdomain,'WRONG_ACCOUNT_SUBDOMAIN');
- checkSettings(await cloudflareRead('/workers/scripts/'+target.worker+'/settings',token,fetcher)); // 404/mauvais droit => arrêt AVANT deploy ; jamais créer un second Worker.
+ requireThat((await cloudflareRead(workerPath+'/subdomain',token,fetcher,'PRE_WORKER_SUBDOMAIN')).enabled===true,'WORKER_SUBDOMAIN_NOT_ENABLED');
+ checkSettings(await cloudflareRead(workerPath+'/settings',token,fetcher,'PRE_WORKER_SETTINGS')); // 404/mauvais droit => arrêt AVANT deploy ; jamais créer un second Worker.
  await deploy(resolve(directory,'wrangler.jsonc'));
  verifyRelease(directory,{sourceSha:env.GITHUB_SHA,expectedHash:receipt.sha256});
- checkSettings(await cloudflareRead('/workers/scripts/'+target.worker+'/settings',token,fetcher),{after:true});
- const logs=await cloudflareRead('/workers/scripts/'+target.worker+'/script-settings',token,fetcher);
+ checkSettings(await cloudflareRead(workerPath+'/settings',token,fetcher,'POST_WORKER_SETTINGS'),{after:true});
+ const logs=await cloudflareRead(workerPath+'/script-settings',token,fetcher,'POST_LOG_SETTINGS');
  requireThat(logs.observability?.enabled===false && logs.logpush!==true && !(logs.tail_consumers?.length),'UNEXPECTED_LOG_COLLECTION');
  return verifyPublic(directory,{fetcher});
 }
@@ -59,5 +69,5 @@ export function runDeployment(config,{env=process.env,spawn=spawnSync}={}){
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href){
  try{const result=await publish(process.argv[2],{deploy:async config=>runDeployment(config)});console.log(JSON.stringify(result));if(process.env.GITHUB_STEP_SUMMARY)appendFileSync(process.env.GITHUB_STEP_SUMMARY,`Interface REC vérifiée : ${result.url}\n\nBundle SHA-256 : ${result.sha256}\n\nBackend désactivé.\n`);}
- catch(e){const known=['MANUAL_MAIN_REC_REQUIRED','WRONG_RELEASE_SOURCE','RELEASE_HASH_MISMATCH','WRONG_RELEASE_TARGET_OR_FLAGS','MISSING_RELEASE_HASH','MISSING_REC_TOKEN','CLOUDFLARE_READ_FAILED','WRONG_ACCOUNT_SUBDOMAIN','UNEXPECTED_EXISTING_BINDING','WRONG_DURABLE_OBJECT','MISSING_DEPLOYED_BINDING','UNEXPECTED_LOG_COLLECTION','WORKER_DEPLOY_FAILED','PUBLIC_ASSET_MISMATCH','WRONG_PUBLIC_ORIGIN','PRIVATE_FILE_EXPOSED','PRIVATE_ENTRY_NOT_CLOSED'];console.error('REC_WORKER_STOP '+((known.includes(e.message) || /^CLOUDFLARE_READ_FAILED_[0-9]{3}$/.test(e.message))?e.message:'PUBLICATION_NOT_VERIFIED'));process.exitCode=1;}
+ catch(e){const known=['MANUAL_MAIN_REC_REQUIRED','WRONG_RELEASE_SOURCE','RELEASE_HASH_MISMATCH','WRONG_RELEASE_TARGET_OR_FLAGS','MISSING_RELEASE_HASH','MISSING_REC_TOKEN','WORKER_SUBDOMAIN_NOT_ENABLED','UNEXPECTED_EXISTING_BINDING','WRONG_DURABLE_OBJECT','MISSING_DEPLOYED_BINDING','UNEXPECTED_LOG_COLLECTION','WORKER_DEPLOY_FAILED','PUBLIC_ASSET_MISMATCH','WRONG_PUBLIC_ORIGIN','PRIVATE_FILE_EXPOSED','PRIVATE_ENTRY_NOT_CLOSED'];console.error('REC_WORKER_STOP '+((known.includes(e.message)?e.message:cloudflareReadErrorCode(e)) || 'PUBLICATION_NOT_VERIFIED'));process.exitCode=1;}
 }
