@@ -250,3 +250,23 @@ ne sont pas supprimées. Aucun état Apps Script/pending n'est lu ou modifié.
 La protection REC (reviewers et branches autorisées) reste celle déjà configurée
 par le propriétaire ; ce workflow ne la modifie pas. La fusion dans main et le
 workflow_dispatch sont les autorisations distinctes préalables à la publication.
+
+
+### Diagnostic de préparation du bundle
+
+Le run manuel 44275974989 a compilé avec succès puis échoué sur la lecture du JS,
+avant les validations de taille, d'empreinte ou de cible : --outdir relatif est
+résolu par Wrangler depuis rec-worker/wrangler.jsonc, alors que le packager lit
+depuis la racine du checkout. Le workflow utilise désormais
+--outdir "$GITHUB_WORKSPACE/work/rec-worker-compiled". Le chemin absolu est partagé
+par les deux outils ; aucun repli ou recherche automatique du bundle n'est ajouté.
+La CI antérieure utilisait déjà un chemin /tmp absolu et ne reproduisait pas ce cas.
+
+Une régression locale exécute Wrangler en dry-run avec les deux formes de chemin,
+y compris un workspace contenant des espaces. Un bundle absent produit maintenant
+REC_WORKER_STOP COMPILED_WORKER_MISSING ; une empreinte différente conserve
+RELEASE_HASH_MISMATCH et les autres contrôles restent bloquants. Les diagnostics
+proviennent d'une liste fermée, sans message d'exception brut, chemin, JSON ou
+variable d'environnement. Aucun répertoire de release n'est créé si le JS manque.
+Cette correction ne lance pas le workflow manuel ; nouvelle validation du
+propriétaire requise avant une publication.
