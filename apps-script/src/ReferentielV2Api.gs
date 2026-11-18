@@ -75,6 +75,53 @@ function _v2Error_(err) {
   const allowed=['INVALID_IMPORT','AMBIGUOUS_TENANT','DUPLICATE_TENANT','DUPLICATE_REFERENCE','INACTIVE_OR_UNKNOWN_REFERENCE','REFERENCE_IN_USE','INVALID_REFERENCE','INVALID_LOGEMENT','DUPLICATE_NUMBER','INVALID_TEXT','INVALID_AMOUNT','INVALID_DATE','INVALID_FIELDS','FORBIDDEN','V2_DISABLED','STALE_REVISION','IDEMPOTENCY_CONFLICT','COMMIT_TOO_LARGE','OVERLAPPING_BAILS','INVALID_RENT_EFFECT','IMPORT_CONFLICT','IMPORT_PREVIEW_CHANGED','INVALID_FINANCIAL_START','IMMUTABLE_BAIL_PARTIES','RENT_OUTSIDE_BAIL'];
   return {ok:false,error:allowed.includes(err.message)?err.message:'V2_REQUEST_FAILED'};
 }
+// Journal distinct des transactions opérationnelles, exclusivement fictif en REC.
+const REC_TEST_SHEET='rec_test_transactions';
+const REC_TEST_HEADER=['request_id','payload_json','created_at','actor'];
+function _recTestSheet_(create) {
+  if(!_recVerifiedActor_ || PropertiesService.getScriptProperties().getProperty('REC_TEST_TRANSACTIONS')!=='1')throw Error('FORBIDDEN');
+  const book=_v2Book_();let sheet=book.getSheetByName(REC_TEST_SHEET);
+  if(!sheet && create){sheet=book.insertSheet(REC_TEST_SHEET);sheet.appendRow(REC_TEST_HEADER);}
+  if(sheet){const h=sheet.getRange(1,1,1,4).getValues()[0];if(sheet.getLastColumn()!==4 || JSON.stringify(h)!==JSON.stringify(REC_TEST_HEADER))throw Error('INVALID_TEST_SCHEMA');}
+  return sheet;
+}
+function _recTestList_() {
+  const sh=_recTestSheet_(false);
+  if(!sh)return {ok:true,environment:'REC',testOnly:true,transactions:[]};
+  const data=sh.getDataRange().getValues().slice(1);
+  return {ok:true,environment:'REC',testOnly:true,transactions:data.map(r=>({...JSON.parse(r[1]),requestId:r[0],createdAt:r[2]}))};
+}
+function _recTestCreate_(body) {
+  if(_recVerifiedActor_?.role!=='admin' || !_v2Enabled_())throw Error('FORBIDDEN');
+  _object_(body,['action','requestId','transaction']);
+  if(typeof body.requestId!=='string' || !/^[A-Za-z0-9_-]{8,100}$/.test(body.requestId))throw Error('INVALID_REQUEST');
+  const tx=body.transaction;
+  _object_(tx,['environment','testOnly','activity','direction','nature','operationDate','period','amount','payment','logementId','bailId','locataireId','description']);
+  if(tx.environment!=='REC' || tx.testOnly!==true || tx.activity!=='rental' || tx.direction!=='in' || tx.nature!=='income' ||
+    !['cash','bank'].includes(tx.payment) || typeof tx.period!=='string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(tx.period) ||
+    !['logementId','bailId','locataireId'].every(k=>typeof tx[k]==='string' && tx[k].length>0 && tx[k].length<=100) ||
+    tx.description!==`Loyer ${tx.period} — TEST REC`)throw Error('INVALID_TEST_TRANSACTION');
+  _date_(tx.operationDate);
+  const amount=_amount_(tx.amount);if(amount<=0)throw Error('INVALID_TEST_TRANSACTION');
+  const lock=LockService.getScriptLock();lock.waitLock(10000);
+  try {
+    const sh=_recTestSheet_(false),rows=sh?sh.getDataRange().getValues().slice(1):[];
+    const serialized=JSON.stringify(tx);
+    const existing=rows.find(r=>r[0]===body.requestId);
+    if(existing){if(existing[1]!==serialized)throw Error('IDEMPOTENCY_CONFLICT');return {ok:true,environment:'REC',testOnly:true,requestId:body.requestId,replayed:true};}
+    const state=_v2Load_().state;
+    const logement=state.logements.find(l=>l.id===tx.logementId && l.actif===true);
+    const bail=state.baux.find(b=>b.id===tx.bailId && b.logementId===tx.logementId && b.locataireId===tx.locataireId && b.statut==='actif' &&
+      (!b.arrivee || b.arrivee<=tx.operationDate) && (!b.depart || b.depart>tx.operationDate));
+    if(!logement || !bail || !state.locataires.some(t=>t.id===tx.locataireId) ||
+      state.baux.filter(b=>b.logementId===tx.logementId && b.statut==='actif' && (!b.arrivee || b.arrivee<=tx.operationDate) && (!b.depart || b.depart>tx.operationDate)).length!==1 ||
+      !state.loyers.some(l=>l.bailId===tx.bailId && (!l.effet || l.effet<=tx.operationDate)))throw Error('INVALID_TEST_REFERENCE');
+    if(serialized.length>10000)throw Error('INVALID_TEST_TRANSACTION');
+    const target=sh || _recTestSheet_(true);
+    target.appendRow([body.requestId,serialized,new Date().toISOString(),_recVerifiedActor_.email]);
+    return {ok:true,environment:'REC',testOnly:true,requestId:body.requestId,replayed:false};
+  } finally {lock.releaseLock();}
+}
 // Pont HtmlService privé : les mêmes contrôles serveur s'appliquent aux appels directs.
 function v2Client(body) {
   try {
@@ -106,8 +153,8 @@ function _recGateway_(body) {
     const user=Array.isArray(users) && users.find(u=>u.email===actor?.email && u.sub===actor?.sub && ['reader','admin'].includes(u.role));
     if(!user)throw Error('FORBIDDEN');
     const action=request.request?.action;
-    if(!['rec.status','v2.read','v2.simulate','v2.write','v2.import'].includes(action))throw Error('FORBIDDEN');
-    if(['v2.write','v2.import'].includes(action) && user.role!=='admin')throw Error('FORBIDDEN');
+    if(!['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list'].includes(action))throw Error('FORBIDDEN');
+    if(['v2.write','v2.import','rec.testTransaction.create'].includes(action) && user.role!=='admin')throw Error('FORBIDDEN');
     _recVerifiedActor_={email:user.email,sub:user.sub,role:user.role,targetId};
     _checkedSheets_();
     const lock=LockService.getScriptLock();lock.waitLock(10000);
@@ -116,7 +163,7 @@ function _recGateway_(body) {
       if(cache.get(nonceKey))throw Error('FORBIDDEN');cache.put(nonceKey,'1',300);
     } finally {lock.releaseLock();}
     verified=true;
-    const response=action==='rec.status'?{ok:true,environment:'REC',scriptHash,sheetHash,active:_v2Enabled_(),canWrite:_v2Enabled_() && user.role==='admin'}:v2Client(request.request);
+    const response=action==='rec.status'?{ok:true,environment:'REC',scriptHash,sheetHash,active:_v2Enabled_(),canWrite:_v2Enabled_() && user.role==='admin',testTransactionsEnabled:p.getProperty('REC_TEST_TRANSACTIONS')==='1'}:action==='rec.testTransaction.list'?_recTestList_():action==='rec.testTransaction.create'?_recTestCreate_(request.request):v2Client(request.request);
     const payload=JSON.stringify({nonce:request.nonce,response});return _json_({payload,mac:_recMac_(payload,key)});
   }catch {
     if(verified){const payload=JSON.stringify({nonce:request.nonce,response:{ok:false,error:'REC_REQUEST_FAILED'}});return _json_({payload,mac:_recMac_(payload,key)});}
