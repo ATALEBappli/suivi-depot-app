@@ -93,6 +93,35 @@ Le workflow REC-Maintenance existant est étendu aux tests, pas au déploiement.
 Le harness de test est séparé de l'entrée réelle worker.mjs : ses identités fictives
 et services Google simulés ne sont jamais importés par le bundle de déploiement.
 
+## Premier affichage sans secrets
+
+Le premier déploiement peut maintenant servir les seuls assets publics vérifiés
+avec APP_ENV=REC et REC_SERVER_URL=<ORIGINE_WORKERS_CONFIRMEE>. Il conserve
+REC_BACKEND_ENABLED=false, REC_USER_ALLOWLIST=[] et observability.enabled=false.
+Aucune valeur factice de secret ni ouverture Google n'est nécessaire pour afficher
+l'interface. Les routes OAuth et API exigent toujours la configuration complète
+avant même de solliciter le Durable Object : sans celle-ci, HTTP 503 générique,
+sans jeton ni appel Google. Afficher la navigation n'est pas réussir le login Hotmail.
+
+L'entrée de production est testée dans workerd sans secrets : assets/CSP, config
+publique minimale, absence de fichiers privés, fermeture de toutes les routes
+OAuth/API, rejet d'une origine différente et d'un environnement PROD. Les tests
+OAuth/SQLite et HMAC antérieurs restent applicables après configuration complète.
+
+Le Worker existant doit être mis à jour avec le nom exact suivi-depot-rec, jamais
+créé sous un nom de remplacement. La migration SQLite et sa liaison REC_AUTH sont
+déjà dans wrangler.jsonc. Ne pas remplacer le Worker par un simple upload statique
+ni utiliser l'ancien formulaire de copie Code.gs. Conserver la version Hello World
+comme retour arrière de déploiement, sans la supprimer.
+
+Si Cloudflare est refusé par le proxy Codex : ajouter exactement dash.cloudflare.com,
+api.cloudflare.com et l'hôte REC workers.dev aux domaines autorisés de l'environnement.
+Ne pas désactiver le proxy ou la validation TLS, ni réutiliser l'accès de DZKoora.
+Autre voie : lancer les mêmes commandes préparées depuis une machine autorisée,
+avec connexion Wrangler interactive locale ; jamais demander un token dans le chat.
+L'autorisation de déployer et la présence d'un accès authentifié sont deux prérequis
+distincts. Un code local 200 n'atteste pas l'état du Worker Cloudflare distant.
+
 ## Configuration future, UNE action à la fois après autorisations
 
 1. Identifier/connecter un compte Cloudflare et confirmer Workers Free sans upgrade.
@@ -109,7 +138,8 @@ et services Google simulés ne sont jamais importés par le bundle de déploieme
    REC_SERVER_URL=<ORIGINE>, REC_APPS_SCRIPT_URL=<exec REC existant, pin contrôlé>,
    REC_OAUTH_CLIENT_ID=<client Web REC>. Secrets Worker REC_OAUTH_CLIENT_SECRET,
    REC_GATEWAY_KEY ; REC_USER_ALLOWLIST=[] au départ. REC_BACKEND_ENABLED=false.
-   Le runtime refuse une configuration incomplète ; aucun secret généré ici.
+   Les entrées privées refusent une configuration incomplète ; les assets publics
+   exigent seulement APP_ENV et REC_SERVER_URL. Aucun secret généré ici.
    Commande future interactive, seulement après accord :
 
        cd rec-worker

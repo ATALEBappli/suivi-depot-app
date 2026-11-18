@@ -4,7 +4,7 @@ import {handle} from './adapter.mjs';
 import {durableStore} from './store.mjs';
 const security={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
 export function failure(status=503){return Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status,headers:security});}
-export function routes(cfg,env,manifest,{fetcher=fetch}={}){
+export function routes(cfg,env,manifest,{beforeAuth=()=>{}}={}){
  const assets=new Map(manifest.files.map(f=>['/'+f.path,f]));
  return async request=>{
   const url=new URL(request.url);if(url.origin!==cfg.origin)return failure(403);
@@ -18,6 +18,7 @@ export function routes(cfg,env,manifest,{fetcher=fetch}={}){
    return new Response(bytes,{headers});
   }
   if(!['/oauth/callback','/auth/start','/auth/exchange','/auth/logout','/api'].includes(path))return new Response('Not found',{status:404,headers:security});
+  beforeAuth(); // Configuration complète obligatoire avant toute entrée privée.
   return env.REC_AUTH.get(env.REC_AUTH.idFromName('rec-auth-v1')).fetch(request);
  };
 }

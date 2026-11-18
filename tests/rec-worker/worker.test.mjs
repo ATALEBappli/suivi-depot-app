@@ -59,3 +59,21 @@ test('fetch edge refuse les redirections OAuth et laisse le contrôle HMAC des r
  globalThis.fetch=async(url,options)=>{seen.push(options.redirect);return new Response(null,{status:302,headers:{Location:'https://evil.invalid'}});};
  try{await assert.rejects(edgeFetch('https://oauth2.googleapis.com/token',{redirect:'error'}),/REDIRECT_REFUSED/);assert.equal((await edgeFetch('https://script.google.com/macros/s/FICTIF/exec',{redirect:'manual'})).status,302);assert.deepEqual(seen,['manual','manual']);}finally{globalThis.fetch=original;}
 });
+
+test('entrée réelle sans secrets : interface publique, aucune entrée OAuth/API ni fuite',async()=>{
+ const env={APP_ENV:'REC',REC_SERVER_URL:cfg.base,REC_BACKEND_ENABLED:'false',REC_USER_ALLOWLIST:'[]'};
+ const w=await localWorker({cfg,site,productionEnv:env});
+ try{
+  const root=await w.mf.dispatchFetch(cfg.base+'/');assert.equal(root.status,200);assert.match(await root.text(),/Suivi Dépôt/);
+  for(const path of ['/app.mjs','/rec-client.mjs','/referentiel/index.html'])assert.equal((await w.mf.dispatchFetch(cfg.base+path)).status,200);
+  const publicConfig=await (await w.mf.dispatchFetch(cfg.base+'/rec-config.mjs')).text();assert.match(publicConfig,/apiBase/);assert.equal(publicConfig.includes('SECRET'),false);
+  for(const [path,method] of [['/auth/start','POST'],['/auth/exchange','POST'],['/auth/logout','POST'],['/oauth/callback','GET'],['/api','POST']]){
+   const r=await w.mf.dispatchFetch(cfg.base+path,{method,headers:{Origin:cfg.origin,'Content-Type':'application/json'},...(method==='POST'?{body:'{}'}:{})});
+   assert.equal(r.status,503);assert.deepEqual(await r.json(),{ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'});assert.equal(r.headers.get('cache-control'),'no-store');
+  }
+  for(const path of ['/.env','/manifest.json','/worker.mjs','/wrangler.jsonc'])assert.equal((await w.mf.dispatchFetch(cfg.base+path)).status,404);
+  assert.equal((await w.mf.dispatchFetch('https://autre.compte-fictif.workers.dev/')).status,403);
+ }finally{await w.close();}
+ const bad=await localWorker({cfg,site,productionEnv:{...env,APP_ENV:'PROD'}});
+ try{assert.equal((await bad.mf.dispatchFetch(cfg.base+'/')).status,503);}finally{await bad.close();}
+});
