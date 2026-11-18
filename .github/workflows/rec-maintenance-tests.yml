@@ -19,11 +19,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ATALEBappli/suivi-depot-demo
-          ref: 0ee316d7f8f4a34f13f94299c623d6046cd5bc44
+          ref: 8cee35c60b77ee4cd01960990c4ad937cf52d2d9
           path: work/rec-frontend
           persist-credentials: false
       - run: npm ci --prefix rec-worker
-      - run: node rec-worker/prepare.mjs work/rec-frontend 0ee316d7f8f4a34f13f94299c623d6046cd5bc44
+      - run: node rec-worker/prepare.mjs work/rec-frontend 8cee35c60b77ee4cd01960990c4ad937cf52d2d9
       - run: node --test tests/rec-automation/*.test.mjs tests/rec-server/*.test.mjs tests/rec-worker/*.test.mjs
       - run: npm run --prefix rec-worker check
         env:
