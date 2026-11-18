@@ -206,8 +206,8 @@ Ne pas lancer avant la validation du propriétaire.
 
 Aucune nouvelle variable GitHub n'est nécessaire. Seul CLOUDFLARE_API_TOKEN de
 l'environnement REC est transmis à la dernière étape du job publish. Le jeton
-existant doit autoriser lecture et modification des scripts Workers du compte
-REC : le précontrôle confirme le sous-domaine et lit les settings du seul Worker
+existant peut être limité au rôle Individual Workers Editor sur le seul Worker
+REC existant : le précontrôle confirme l'activation workers.dev et lit les settings du seul Worker
 suivi-depot-rec. Il s'arrête si le Worker manque, si le token ne permet pas cette
 lecture ou si des bindings/secrets/configurations inattendus sont déjà présents.
 Aucun endpoint de facturation/abonnement ni autre Worker n'est ciblé. Le plan Free
@@ -270,3 +270,43 @@ proviennent d'une liste fermée, sans message d'exception brut, chemin, JSON ou
 variable d'environnement. Aucun répertoire de release n'est créé si le JS manque.
 Cette correction ne lance pas le workflow manuel ; nouvelle validation du
 propriétaire requise avant une publication.
+
+
+### Lectures compatibles avec un jeton Individual Workers Editor
+
+Le run 44283361390 a réussi prepare puis renvoyé CLOUDFLARE_READ_FAILED_400 dans
+publish. L'ancien diagnostic ne distinguait pas les appels : il ne constitue pas
+à lui seul une trace certaine de l'endpoint fautif. Le premier appel du code était
+GET /accounts/{account}/workers/subdomain. Cette lecture globale est valide mais
+sa liste de permissions acceptées ne comprend pas Individual Workers Editor.
+Ce précontrôle était donc incompatible avec le rôle indiqué par le propriétaire.
+
+Il est remplacé par GET /accounts/{account}/workers/scripts/suivi-depot-rec/subdomain,
+qui accepte ce rôle et doit répondre enabled=true. Les lectures /settings et
+/script-settings du même Worker sont valides et acceptent également Individual
+Workers Editor ; elles restent inchangées. Aucun droit de compte plus large n'est
+demandé. L'API globale du sous-domaine est maintenant refusée par la liste interne
+des endpoints autorisés, sans repli si la lecture scoped échoue.
+
+Le compte, le nom et l'origine autorisée restent figés dans le reçu et la config.
+Les GET authentifiés sont limités à ce compte et ce Worker ; un mauvais scope ou
+un Worker absent arrête avant l'écriture. L'activation workers.dev est contrôlée
+sur ce Worker précis ; elle ne renvoie pas le libellé du sous-domaine du compte.
+L'origine reste celle déjà confirmée par le propriétaire ; elle est vérifiée après
+publication par comparaison des octets et du fichier de configuration publique.
+Les contrôles de bindings, sources, hash, logs et backend désactivé sont conservés.
+
+Chaque échec de lecture donne seulement une étape fixe et un statut/type d'erreur :
+CLOUDFLARE_READ_PRE_WORKER_SUBDOMAIN_HTTP_400, PRE_WORKER_SETTINGS,
+POST_WORKER_SETTINGS ou POST_LOG_SETTINGS ; NETWORK_ERROR et INVALID_RESPONSE sont
+aussi possibles. Les noms ne viennent pas de paramètres utilisateur ou d'une
+réponse Cloudflare. Aucun corps/headers/token/message brut n'est affiché. Le statut
+HTTP seul n'est pas interprété comme la preuve d'un problème précis de jeton.
+Aucun déploiement de diagnostic n'est déclenché pour tester le secret réel.
+
+Sources officielles vérifiées le 18 novembre 2026 :
+- Lecture globale (permissions legacy Workers Scripts Read/Write) : https://developers.cloudflare.com/api/resources/workers/subresources/subdomains/methods/get/
+- Lecture du Worker (Individual Workers Editor accepté) : https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/subdomain/methods/get/
+- Settings de version/bindings : https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/
+- Settings de script/logs : https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/settings/methods/get/
+- Rôles et scopes Worker : https://developers.cloudflare.com/workers/authorization/workers/

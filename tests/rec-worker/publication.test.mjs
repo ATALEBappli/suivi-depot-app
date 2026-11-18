@@ -3,18 +3,18 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,readlinkSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {createRelease,verifyRelease,target,releaseConfig} from '../../rec-worker/release.mjs';
-import {publish,gate,checkSettings,cloudflareRead,verifyPublic,runDeployment} from '../../rec-worker/publish.mjs';
+import {publish,gate,checkSettings,cloudflareRead,verifyPublic,runDeployment,cloudflareReadErrorCode} from '../../rec-worker/publish.mjs';
 const sha='a'.repeat(40),token='FICTITIOUS_TOKEN_TEST_ONLY';
 function candidate(){const root=mkdtempSync(tmpdir()+'/rec-publication-');mkdirSync(root+'/compiled');writeFileSync(root+'/compiled/worker.js','// Fictitious compiled script for integrity tests only.\n'.repeat(5));const out=root+'/release',receipt=createRelease({bundle:root+'/compiled',publicDirectory:new URL('../../rec-server/public',import.meta.url).pathname,output:out,sourceSha:sha});return {root,out,receipt};}
 function env(hash){return {GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',GITHUB_REPOSITORY:target.repository,GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,REC_PUBLICATION_CONFIRMED:'true',REC_RELEASE_HASH:hash,CLOUDFLARE_API_TOKEN:token};}
 const bindings=()=>[...Object.entries(releaseConfig().vars).map(([name,text])=>({name,text,type:'plain_text'})),{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious-namespace'},{name:'ASSETS',type:'assets'}];
-function fakeRemote(out,{missing=false,subdomain=target.subdomain,postLogs={observability:{enabled:false}},assetChanged=false}={}){
+function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{enabled:false}},assetChanged=false}={}){
  const calls=[];let deployed=false;
  return {calls,deployed:()=>{deployed=true;},fetcher:async(url,options={})=>{
   calls.push({url,method:options.method || 'GET'});
   if(url.startsWith('https://api.cloudflare.com/')){
    assert.equal(options.headers.Authorization,'Bearer '+token);assert.equal(options.redirect,'error');assert.ok(url.startsWith('https://api.cloudflare.com/client/v4/accounts/'+target.account+'/workers/'));
-   if(url.endsWith('/workers/subdomain'))return Response.json({success:true,result:{subdomain}});
+   if(url.endsWith('/workers/scripts/'+target.worker+'/subdomain'))return Response.json({success:true,result:{enabled,previews_enabled:false}});
    if(url.endsWith('/script-settings'))return Response.json({success:true,result:postLogs});
    assert.ok(url.endsWith('/workers/scripts/'+target.worker+'/settings'));
    if(missing)return Response.json({success:false,errors:[{message:'MUST_NOT_BE_LOGGED'}]},{status:404});
@@ -48,7 +48,7 @@ test('refuse les secrets/propriétés inattendues, backend actif et DO étranger
 });
 test('publication simulée : existence exigée, aucun autre Worker, assets exacts et API fermée',async()=>{
  const c=candidate();try{
-  for(const options of [{missing:true},{subdomain:'other'}]){const remote=fakeRemote(c.out,options);let writes=0;await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;}}));assert.equal(writes,0);}
+  for(const options of [{missing:true},{enabled:false}]){const remote=fakeRemote(c.out,options);let writes=0;await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;}}));assert.equal(writes,0);}
   const remote=fakeRemote(c.out);let writes=0;const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async config=>{writes++;assert.equal(config,c.out+'/wrangler.jsonc');remote.deployed();}});
   assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');assert.equal(remote.calls.some(c=>/google|other|dzkoora/i.test(c.url)),false);
   for(const c of remote.calls.filter(c=>c.url.startsWith('https://api.cloudflare.com/')))assert.equal(c.method,'GET');
@@ -74,4 +74,44 @@ test('Wrangler : compte forcé, absence de logs persistants, aucune sortie brute
   path=options.env.WRANGLER_LOG_PATH;assert.equal(readlinkSync(path),'/dev/null');assert.ok(args.includes('--no-bundle'));assert.deepEqual(options.stdio,['ignore','pipe','pipe']);return {status:0,stdout:token,stderr:token};
  }});assert.equal(existsSync(path),false);
  assert.throws(()=>runDeployment('/fictitious/wrangler.jsonc',{env:{},spawn:()=>({status:1,stderr:token})}),/^Error: WORKER_DEPLOY_FAILED$/);
+});
+
+test('Individual Workers Editor : aucun appel compte global, contrôles Worker existant et sous-domaine préservés',async()=>{
+ const c=candidate();try{
+  const remote=fakeRemote(c.out);let writes=0,globalCalls=0;
+  const scoped=async(url,options)=>{if(new URL(url).pathname.endsWith('/workers/subdomain')){globalCalls++;return Response.json({success:false,errors:[{message:'FICTITIOUS_PRIVATE_ERROR'}]},{status:400});}return remote.fetcher(url,options);};
+  const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:scoped,deploy:async()=>{writes++;remote.deployed();}});
+  assert.equal(globalCalls,0);assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');
+  assert.ok(remote.calls[0].url.endsWith('/workers/scripts/'+target.worker+'/subdomain'));
+  const denied=fakeRemote(c.out,{enabled:false});writes=0;
+  await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:denied.fetcher,deploy:async()=>{writes++;}}),/WORKER_SUBDOMAIN_NOT_ENABLED/);assert.equal(writes,0);
+ }finally{rmSync(c.root,{recursive:true,force:true});}
+});
+test('diagnostic de chaque lecture : étape + statut, sans corps/jeton/exception brute ni poursuite',async()=>{
+ const steps={PRE_WORKER_SUBDOMAIN:'/subdomain',PRE_WORKER_SETTINGS:'/settings',POST_WORKER_SETTINGS:'/settings',POST_LOG_SETTINGS:'/script-settings'};
+ for(const [step,suffix]of Object.entries(steps)){
+  const path='/workers/scripts/'+target.worker+suffix;
+  for(const status of [400,401,403,404]){
+   let bodyRead=false;const response={ok:false,status,json:async()=>{bodyRead=true;return {errors:[{message:token}]};}};
+   await assert.rejects(cloudflareRead(path,token,async()=>response,step),e=>{assert.equal(cloudflareReadErrorCode(e),'CLOUDFLARE_READ_'+step+'_HTTP_'+status);assert.equal(e.message.includes(token),false);return true;});assert.equal(bodyRead,false);
+  }
+  await assert.rejects(cloudflareRead(path,token,async()=>{throw Error(token);},step),e=>cloudflareReadErrorCode(e)==='CLOUDFLARE_READ_'+step+'_NETWORK_ERROR');
+  await assert.rejects(cloudflareRead(path,token,async()=>({ok:true,json:async()=>{throw Error(token);}}),step),e=>cloudflareReadErrorCode(e)==='CLOUDFLARE_READ_'+step+'_INVALID_RESPONSE');
+ }
+ assert.equal(cloudflareReadErrorCode(Error(token)),null);
+ let called=false;await assert.rejects(cloudflareRead('/workers/subdomain',token,async()=>{called=true;}),/FORBIDDEN_API_PATH/);assert.equal(called,false);
+ await assert.rejects(cloudflareRead('/workers/scripts/'+target.worker+'/settings',token,async()=>{called=true;},'PRE_WORKER_SUBDOMAIN'),/FORBIDDEN_API_PATH/);assert.equal(called,false);
+ const c=candidate();try{let writes=0;await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:async()=>new Response('',{status:400}),deploy:async()=>{writes++;}}),/CLOUDFLARE_READ_PRE_WORKER_SUBDOMAIN_HTTP_400/);assert.equal(writes,0);}finally{rmSync(c.root,{recursive:true,force:true});}
+});
+
+test('publish : diagnostic pré/post exact, arrêt sans poursuite et sans reprise automatique',async()=>{
+ const c=candidate();try{
+  const steps={PRE_WORKER_SUBDOMAIN:'/subdomain',PRE_WORKER_SETTINGS:'/settings',POST_WORKER_SETTINGS:'/settings',POST_LOG_SETTINGS:'/script-settings'};
+  for(const [step,suffix]of Object.entries(steps)){
+   const remote=fakeRemote(c.out);let writes=0;
+   const fetcher=async(url,options)=>{const phase=writes===0?'PRE':'POST';if(url.startsWith('https://api.cloudflare.com/') && url.endsWith('/workers/scripts/'+target.worker+suffix) && step.startsWith(phase+'_'))return new Response(token,{status:400});return remote.fetcher(url,options);};
+   await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher,deploy:async()=>{writes++;remote.deployed();}}),e=>cloudflareReadErrorCode(e)==='CLOUDFLARE_READ_'+step+'_HTTP_400');
+   assert.equal(writes,step.startsWith('PRE_')?0:1);
+  }
+ }finally{rmSync(c.root,{recursive:true,force:true});}
 });
