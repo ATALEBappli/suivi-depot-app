@@ -28,3 +28,7 @@ jobs:
       - run: npm run --prefix rec-worker check
         env:
           WRANGLER_SEND_METRICS: 'false'
+      - name: Préparer et tester le bundle compilé exact, sans publication
+        run: |
+          node rec-worker/release.mjs create /tmp/rec-worker-dry-run rec-server/public work/rec-worker-release "$GITHUB_SHA"
+          node tests/rec-worker/release-smoke.mjs work/rec-worker-release "$GITHUB_SHA"

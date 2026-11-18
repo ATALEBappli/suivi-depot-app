@@ -185,3 +185,68 @@ Synthèse demeure fictive et aucun écran Saisie autonome raccordé n'est prése
 le main frontend fusionné. Cette adaptation livre toute l'US-015 implémentée ; elle
 n'invente ni écran financier ni mouvement de caution. Aucune modification de PROD,
 des données, permissions, secrets Google, déploiement ou journal pending réalisée.
+
+## Publication manuelle GitHub Actions de l'interface seule
+
+Workflow ajouté dans la PR #22 : `.github/workflows/rec-worker-manual.yml`.
+Il est nécessaire car les workflows de mutation existants ciblent Apps Script,
+qui est explicitement hors périmètre de cette publication Cloudflare. Le workflow
+REC-Maintenance existant vérifie aussi le bundle compilé localement en CI.
+Aucun lancement n'est effectué pendant cette préparation.
+
+Après revue, validation et fusion séparée de la PR #22 dans main :
+https://github.com/ATALEBappli/suivi-depot-app/actions/workflows/rec-worker-manual.yml
+
+Depuis iPhone : Actions → ce workflow → Run workflow → branche main → cocher la
+confirmation du Worker existant et de l'offre Free → Run workflow. Si REC exige
+une approbation, lire d'abord la synthèse du job prepare (source SHA + empreinte
+SHA-256), puis approuver dans Review deployments. Le workflow n'existe dans la
+liste des actions exécutables qu'après son intégration dans la branche par défaut.
+Ne pas lancer avant la validation du propriétaire.
+
+Aucune nouvelle variable GitHub n'est nécessaire. Seul CLOUDFLARE_API_TOKEN de
+l'environnement REC est transmis à la dernière étape du job publish. Le jeton
+existant doit autoriser lecture et modification des scripts Workers du compte
+REC : le précontrôle confirme le sous-domaine et lit les settings du seul Worker
+suivi-depot-rec. Il s'arrête si le Worker manque, si le token ne permet pas cette
+lecture ou si des bindings/secrets/configurations inattendus sont déjà présents.
+Aucun endpoint de facturation/abonnement ni autre Worker n'est ciblé. Le plan Free
+est confirmé par la case du déclenchement ; la lecture des settings ne prouve pas
+le plan commercial et ne nécessite pas d'ajouter des droits Billing au jeton.
+
+Le job prepare n'a aucun secret : checkout du SHA exact du workflow main et du
+frontend approuvé, npm ci avec verrouillage, tests, compilation Wrangler dry-run,
+artefact contenant uniquement le JS compilé, les assets publics, la configuration
+fixe et un reçu d'empreintes. Les sources/maps/credentials ne sont pas exportées.
+La liaison Static Assets réelle est testée dans workerd avec CES octets compilés,
+pas seulement avec un faux serveur de fichiers. html_handling=none évite les
+redirections canoniques index.html incompatibles avec la vérification des octets.
+La CSP et les gardes restent appliquées par le Worker avant les assets.
+
+Après approbation REC, publish récupère l'artefact immutable du même run, vérifie
+son empreinte, ses sources, les fichiers autorisés et la configuration exacte :
+compte/Worker fixes, migrations SQLite RecAuth, backend false, allowlist vide,
+origine REC uniquement, aucun secret OAuth/HMAC, aucune route custom, logs et tail
+consumers désactivés. Aucun input ne permet de changer ces paramètres. Seul le
+script main approuvé a accès au token ; npm ci et les tests n'en disposent pas.
+Wrangler réutilise le JS compilé avec --no-bundle et sans découverte de modules
+supplémentaires. Ses sorties brutes ne sont pas reproduites ; son fichier de debug
+est redirigé vers /dev/null, la sanitisation forcée et ses métriques désactivées. Les erreurs API sont
+réduites à des codes fixes, sans corps, headers ou token. Aucune réponse API brute,
+log Wrangler, configuration privée ou secret n'est téléversé comme artefact.
+
+Après publication, contrôles HTTP strictement sur l'origine REC : racine et tous
+les assets identiques aux empreintes, config publique exacte, fichiers privés
+inaccessibles, routes OAuth/API fermées (503 de configuration), settings/DO et
+collecte de logs contrôlés. Aucun appel Google. La synthèse n'annonce l'URL vérifiée
+que lorsque tous ces contrôles passent. Si la propagation ou le CPU Free fait
+échouer un contrôle, le run échoue, sans affirmer que Hello World est toujours
+publié : l'écriture peut avoir réussi. Pas de second deploy, de suppression, de
+restore ou de rollback automatique. Conserver l'artefact et le reçu du run pour une
+vérification en lecture seule avant toute reprise. Les artefacts expirent après
+7 jours ; la synthèse conserve le SHA et le hash. Les versions Cloudflare antérieures
+ne sont pas supprimées. Aucun état Apps Script/pending n'est lu ou modifié.
+
+La protection REC (reviewers et branches autorisées) reste celle déjà configurée
+par le propriétaire ; ce workflow ne la modifie pas. La fusion dans main et le
+workflow_dispatch sont les autorisations distinctes préalables à la publication.
