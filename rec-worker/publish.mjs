@@ -33,6 +33,24 @@ export function checkSettings(settings,{after=false}={}){
  }
  if(after)requireThat([...Object.keys(vars),'REC_AUTH','ASSETS'].every(name=>name==='ASSETS' || seen.has(name)),'MISSING_DEPLOYED_BINDING');
 }
+// ScriptSetting.observability et tail_consumers sont optionnels et nullables.
+// Absence = fonctionnalité non configurée ; un objet présent doit rester explicite.
+export function checkLogSettings(settings){
+ const object=v=>v!==null && typeof v==='object' && !Array.isArray(v);
+ const off=v=>v===undefined || v===false;
+ const empty=v=>v==null || (Array.isArray(v) && v.length===0);
+ const reject=()=>requireThat(false,'UNEXPECTED_LOG_COLLECTION');
+ if(!object(settings) || !off(settings.logpush) || !empty(settings.tail_consumers))reject();
+ const obs=settings.observability;
+ if(obs==null)return; // Schéma officiel : undefined ou null, pas de collecte configurée.
+ if(!object(obs) || obs.enabled!==false)reject();
+ for(const name of ['logs','traces','issues','agents']){
+  const channel=obs[name];if(channel==null)continue;
+  if(!object(channel) || !(name==='logs'?channel.enabled===false:off(channel.enabled)))reject();
+  // Une destination reste interdite, même si le canal est déclaré inactif.
+  if(!empty(channel.destinations))reject();
+ }
+}
 const releaseVars=()=>({APP_ENV:'REC',REC_SERVER_URL:target.origin,REC_BACKEND_ENABLED:'false',REC_USER_ALLOWLIST:'[]'});
 export async function verifyPublic(directory,{fetcher=fetch}={}){
  const receipt=verifyRelease(directory),get=path=>fetcher(target.origin+path,{redirect:'error',signal:AbortSignal.timeout(20000)});
@@ -55,7 +73,7 @@ export async function publish(directory,{env=process.env,fetcher=fetch,deploy}={
  verifyRelease(directory,{sourceSha:env.GITHUB_SHA,expectedHash:receipt.sha256});
  checkSettings(await cloudflareRead(workerPath+'/settings',token,fetcher,'POST_WORKER_SETTINGS'),{after:true});
  const logs=await cloudflareRead(workerPath+'/script-settings',token,fetcher,'POST_LOG_SETTINGS');
- requireThat(logs.observability?.enabled===false && logs.logpush!==true && !(logs.tail_consumers?.length),'UNEXPECTED_LOG_COLLECTION');
+ checkLogSettings(logs);
  return verifyPublic(directory,{fetcher});
 }
 export function runDeployment(config,{env=process.env,spawn=spawnSync}={}){
