@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,readlinkSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {createRelease,verifyRelease,target,releaseConfig} from '../../rec-worker/release.mjs';
-import {publish,gate,checkSettings,cloudflareRead,verifyPublic,runDeployment,cloudflareReadErrorCode} from '../../rec-worker/publish.mjs';
+import {publish,gate,checkSettings,cloudflareRead,verifyPublic,runDeployment,cloudflareReadErrorCode,checkLogSettings} from '../../rec-worker/publish.mjs';
 const sha='a'.repeat(40),token='FICTITIOUS_TOKEN_TEST_ONLY';
 function candidate(){const root=mkdtempSync(tmpdir()+'/rec-publication-');mkdirSync(root+'/compiled');writeFileSync(root+'/compiled/worker.js','// Fictitious compiled script for integrity tests only.\n'.repeat(5));const out=root+'/release',receipt=createRelease({bundle:root+'/compiled',publicDirectory:new URL('../../rec-server/public',import.meta.url).pathname,output:out,sourceSha:sha});return {root,out,receipt};}
 function env(hash){return {GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',GITHUB_REPOSITORY:target.repository,GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,REC_PUBLICATION_CONFIRMED:'true',REC_RELEASE_HASH:hash,CLOUDFLARE_API_TOKEN:token};}
@@ -113,5 +113,30 @@ test('publish : diagnostic pré/post exact, arrêt sans poursuite et sans repris
    await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher,deploy:async()=>{writes++;remote.deployed();}}),e=>cloudflareReadErrorCode(e)==='CLOUDFLARE_READ_'+step+'_HTTP_400');
    assert.equal(writes,step.startsWith('PRE_')?0:1);
   }
+ }finally{rmSync(c.root,{recursive:true,force:true});}
+});
+
+test('régression logs OFF : ScriptSetting nullable/omis équivaut à une collecte non configurée',()=>{
+ for(const settings of [{},{logpush:false,tail_consumers:[]},{logpush:false,observability:null,tail_consumers:null},{observability:{enabled:false}},{observability:{enabled:false,logs:null,traces:null,issues:null}},{observability:{enabled:false,logs:{enabled:false,invocation_logs:true,persist:true,destinations:[]},traces:{enabled:false,destinations:[]},issues:{enabled:false}}}])assert.doesNotThrow(()=>checkLogSettings(settings));
+ // L'ancien contrôle rejetait les deux représentations officielles OFF.
+ for(const settings of [{logpush:false,tail_consumers:[]},{logpush:false,observability:null,tail_consumers:null}])assert.equal(settings.observability?.enabled===false,false);
+});
+test('logs : activation/exports ou types indéterminés toujours refusés',()=>{
+ const invalid=[null,[],{logpush:true},{logpush:'false'},{logpush:null},{tail_consumers:[{service:'fictitious-consumer'}]},{tail_consumers:{}},{observability:true},{observability:[]},{observability:{}},{observability:{enabled:true}},{observability:{enabled:'false'}}];
+ for(const name of ['logs','traces','issues','agents']){
+  invalid.push({observability:{enabled:false,[name]:{enabled:true}}},{observability:{enabled:false,[name]:{enabled:'false'}}},{observability:{enabled:false,[name]:{enabled:false,destinations:['fictitious-destination']}}},{observability:{enabled:false,[name]:{enabled:false,destinations:'not-an-array'}}});
+ }
+ invalid.push({observability:{enabled:false,logs:{}}});
+ for(const settings of invalid)assert.throws(()=>checkLogSettings(settings),/^Error: UNEXPECTED_LOG_COLLECTION$/);
+});
+test('publication simulée après logs OFF nullable : tous les contrôles publics continuent, aucun vrai déploiement',async()=>{
+ const c=candidate();try{
+  for(const postLogs of [{logpush:false,observability:null,tail_consumers:[]},{logpush:false,tail_consumers:null}]){
+   const remote=fakeRemote(c.out,{postLogs});let writes=0;const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;remote.deployed();}});
+   assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');assert.ok(remote.calls.some(c=>c.url===target.origin+'/auth/start'));
+  }
+  // Corriger le faux positif ne permet pas de sauter la vérification du frontend.
+  const changed=fakeRemote(c.out,{postLogs:{observability:null},assetChanged:true});
+  await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:changed.fetcher,deploy:async()=>changed.deployed()}),/PUBLIC_ASSET_MISMATCH/);
  }finally{rmSync(c.root,{recursive:true,force:true});}
 });

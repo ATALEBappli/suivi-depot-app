@@ -310,3 +310,35 @@ Sources officielles vérifiées le 18 novembre 2026 :
 - Settings de version/bindings : https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/script_and_version_settings/methods/get/
 - Settings de script/logs : https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/settings/methods/get/
 - Rôles et scopes Worker : https://developers.cloudflare.com/workers/authorization/workers/
+
+### Normalisation des settings de collecte désactivés
+
+Le modèle officiel ScriptSetting déclare observability optionnel et nullable,
+logpush optionnel booléen, et tail_consumers optionnel/nullable. Un bloc
+observability absent/null n'est pas équivalent à un objet explicitement activé.
+Le contrôle initial observability?.enabled === false rejetait pourtant ces deux
+représentations OFF : undefined !== false. Les tests ne couvraient que l'objet
+explicite {enabled:false}, d'où le faux positif UNEXPECTED_LOG_COLLECTION.
+
+checkLogSettings normalise seulement l'absence/null documentée. Si observability
+est un objet présent, enabled doit rester strictement false. Les activations
+explicites de logs, traces, issues ou agents, les destinations non vides, Logpush
+et les tail consumers sont toujours refusés. Les types incohérents, notamment
+"false" en chaîne et un objet observability sans enabled, restent bloquants.
+Un sous-paramètre invocation_logs/persist conservé ne rend pas un canal explicitement
+désactivé actif ; en revanche une destination configurée reste interdite même OFF.
+Aucun échantillonnage à zéro ou persist=false n'est assimilé à une désactivation.
+
+La réponse Cloudflare privée n'a pas été extraite ni affichée pendant la correction.
+Les anciens logs indiquent l'échec de la condition combinée, pas la valeur exacte
+absente/null du Worker ; les cas conformes OFF sont reproduits localement. Les
+lectures des settings, tous les contrôles avant déploiement et les vérifications
+publiques après le contrôle des logs restent inchangés. Ne pas relancer un deploy
+pour appliquer ou diagnostiquer cette normalisation sans validation distincte.
+
+Schéma officiel de la réponse :
+https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/settings/methods/get/
+Types du SDK officiel (ScriptSetting, observability nullable) :
+https://github.com/cloudflare/cloudflare-typescript/blob/main/src/resources/workers/scripts/scripts.ts
+Activation des logs, opt-in explicite :
+https://developers.cloudflare.com/workers/observability/logs/workers-logs/
