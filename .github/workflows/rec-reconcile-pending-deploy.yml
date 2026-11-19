@@ -1,0 +1,70 @@
+name: REC — régularisation du reçu 43927899195
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_sha256:
+        description: Empreinte SHA-256 du déploiement obtenue par un diagnostic récent
+        type: string
+        required: true
+      operation_sha256:
+        description: Empreinte SHA-256 du reçu pending obtenue par un diagnostic récent
+        type: string
+        required: true
+      audit_confirmed:
+        description: Autorisation distincte de sauvegarder et finaliser ce seul reçu Drive ; audit et gel REC confirmés
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-rec
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true' && vars.REC_MUTATIONS_ENABLED == 'true' && inputs.audit_confirmed == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Tester sans secrets ni accès Google
+        run: node --test tests/rec-automation/*.test.mjs
+
+  reconciliation:
+    needs: tests
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true' && vars.REC_MUTATIONS_ENABLED == 'true' && inputs.audit_confirmed == true
+    environment: REC
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Sauvegarder puis régulariser uniquement le reçu privé Drive
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
+          REC_RECONCILE_CONFIRMED: ${{ inputs.audit_confirmed }}
+          REC_EXPECTED_DEPLOYMENT_HASH: ${{ inputs.deployment_sha256 }}
+          REC_EXPECTED_OPERATION_HASH: ${{ inputs.operation_sha256 }}
+          REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
+          REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}
+          REC_GOOGLE_EMAIL: ${{ secrets.REC_GOOGLE_EMAIL }}
+          REC_OWNER_EMAIL: ${{ secrets.REC_OWNER_EMAIL }}
+          REC_DEPLOYMENT_ID: ${{ secrets.REC_DEPLOYMENT_ID }}
+          REC_GOOGLE_OAUTH: ${{ secrets.REC_GOOGLE_OAUTH }}
+        run: node scripts/rec-automation/reconcile-pending-deploy.mjs
