@@ -4,11 +4,13 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,readlinkSync,exi
 import {tmpdir} from 'node:os';
 import {createRelease,verifyRelease,target,releaseConfig} from '../../rec-worker/release.mjs';
 import {publish,gate,checkSettings,cloudflareRead,verifyPublic,runDeployment,cloudflareReadErrorCode,checkLogSettings} from '../../rec-worker/publish.mjs';
+import {hex} from '../../rec-server/security.mjs';
 const sha='a'.repeat(40),token='FICTITIOUS_TOKEN_TEST_ONLY';
 function candidate(){const root=mkdtempSync(tmpdir()+'/rec-publication-');mkdirSync(root+'/compiled');writeFileSync(root+'/compiled/worker.js','// Fictitious compiled script for integrity tests only.\n'.repeat(5));const out=root+'/release',receipt=createRelease({bundle:root+'/compiled',publicDirectory:new URL('../../rec-server/public',import.meta.url).pathname,output:out,sourceSha:sha});return {root,out,receipt};}
 function env(hash){return {GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',GITHUB_REPOSITORY:target.repository,GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,REC_PUBLICATION_CONFIRMED:'true',REC_RELEASE_HASH:hash,CLOUDFLARE_API_TOKEN:token};}
 const bindings=()=>[...Object.entries(releaseConfig().vars).map(([name,text])=>({name,text,type:'plain_text'})),{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious-namespace'},{name:'ASSETS',type:'assets'}];
-function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{enabled:false}},assetChanged=false}={}){
+function oauthBindings(){return [{name:'REC_OAUTH_CLIENT_ID',type:'plain_text',text:'12345-fictitious.apps.googleusercontent.com'},{name:'REC_OAUTH_CLIENT_SECRET',type:'secret_text'},{name:'REC_GATEWAY_KEY',type:'secret_text'}];}
+function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{enabled:false}},assetChanged=false,oauth=false,removeOAuthAfter=false}={}){
  const calls=[];let deployed=false;
  return {calls,deployed:()=>{deployed=true;},fetcher:async(url,options={})=>{
   calls.push({url,method:options.method || 'GET'});
@@ -18,12 +20,12 @@ function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{ena
    if(url.endsWith('/script-settings'))return Response.json({success:true,result:postLogs});
    assert.ok(url.endsWith('/workers/scripts/'+target.worker+'/settings'));
    if(missing)return Response.json({success:false,errors:[{message:'MUST_NOT_BE_LOGGED'}]},{status:404});
-   return Response.json({success:true,result:{bindings:deployed?bindings():[]}});
+   return Response.json({success:true,result:{bindings:[...(deployed?bindings():[]),...(oauth && (!deployed || !removeOAuthAfter)?oauthBindings():[])]}});
   }
   assert.equal(new URL(url).origin,target.origin);const path=new URL(url).pathname;
   if(path==='/rec-config.mjs')return new Response('export default Object.freeze('+JSON.stringify({apiBase:target.origin})+');');
   if(['/.env','/manifest.json','/worker.mjs'].includes(path))return new Response('',{status:404});
-  if(['/api','/auth/start'].includes(path)){assert.equal(options.method,'POST');return Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status:503});}
+  if(['/api','/auth/start'].includes(path)){assert.equal(options.method,oauth?'GET':'POST');return oauth?Response.json({ok:false,error:'REC_REQUEST_FAILED'},{status:400}):Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status:503});}
   return new Response(assetChanged?'changed':readFileSync(out+'/public'+(path==='/'?'/index.html':path)),{headers:{'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"}});
  }};
 }
@@ -43,8 +45,29 @@ test('artefact : sources, config fixe, intégrité et absence de fichier supplé
  }finally{rmSync(c.root,{recursive:true,force:true});}
 });
 test('refuse les secrets/propriétés inattendues, backend actif et DO étranger AVANT remplacement',()=>{
- for(const b of [{name:'REC_OAUTH_CLIENT_SECRET',type:'secret_text'},{name:'REC_BACKEND_ENABLED',type:'plain_text',text:'true'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'Other',namespace_id:'fictitious'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious',script_name:'other'}])assert.throws(()=>checkSettings({bindings:[b]}));
+ for(const b of [{name:'REC_OAUTH_CLIENT_SECRET',type:'plain_text',text:'exposed'},{name:'REC_GATEWAY_KEY',type:'plain_text',text:'exposed'},{name:'REC_OAUTH_CLIENT_ID',type:'plain_text',text:'invalid'},{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/WRONG/exec'},{name:'REC_BACKEND_ENABLED',type:'plain_text',text:'true'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'Other',namespace_id:'fictitious'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious',script_name:'other'}])assert.throws(()=>checkSettings({bindings:[b]}));
+ assert.throws(()=>checkSettings({bindings:oauthBindings()}),/OAUTH_CONFIGURATION_INCOMPLETE/);
  checkSettings({bindings:[]});checkSettings({bindings:bindings()},{after:true});assert.throws(()=>checkSettings({bindings:[]},{after:true}),/MISSING_DEPLOYED_BINDING/);
+});
+test('OAuth REC : quatre paramètres requis, secrets privés et cible Apps Script épinglée',()=>{
+ const deployment='FICTITIOUS_REC_DEPLOYMENT',pin=hex(deployment);
+ const configured=[...oauthBindings(),{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/'+deployment+'/exec'}];
+ assert.equal(checkSettings({bindings:configured},{deploymentPin:pin}).oauthConfigured,true);
+ assert.throws(()=>checkSettings({bindings:configured},{deploymentPin:hex('WRONG')}),/UNEXPECTED_EXISTING_BINDING/);
+ for(const b of configured){assert.throws(()=>checkSettings({bindings:configured.filter(x=>x!==b)},{deploymentPin:pin}),/OAUTH_CONFIGURATION_INCOMPLETE/);}
+});
+test('OAuth présent sans configuration complète : publication bloquée avant toute écriture',async()=>{
+ const c=candidate();try{const remote=fakeRemote(c.out,{oauth:true});let writes=0;
+  await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;}}),/OAUTH_CONFIGURATION_INCOMPLETE/);
+  assert.equal(writes,0);
+ }finally{rmSync(c.root,{recursive:true,force:true});}
+});
+test('contrôle public OAuth préparé : requêtes GET seulement et API privée fermée',async()=>{
+ const c=candidate();try{const remote=fakeRemote(c.out,{oauth:true});
+  const result=await verifyPublic(c.out,{fetcher:remote.fetcher,oauthConfigured:true});
+  assert.equal(result.status,'verified_public_interface_backend_disabled');
+  assert.equal(remote.calls.some(x=>x.method==='POST'),false);
+ }finally{rmSync(c.root,{recursive:true,force:true});}
 });
 test('publication simulée : existence exigée, aucun autre Worker, assets exacts et API fermée',async()=>{
  const c=candidate();try{
