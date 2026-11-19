@@ -56,6 +56,7 @@ export async function inspectPendingDeploy({api,store,policy,state,pending,expec
     canonical(await api.deployments())===canonical(state.deployments),'REMOTE_STATE_CHANGED');
   return {requestTag:expected.tag,classification,publishedVersion:published,createdVersion:created,
     previousVersion:before[0].version,publishedHash,expectedHash:expected.hash,
+    deploymentHash:digest(d.deploymentId),operationHash:digest(p),
     existingUrlUnchanged:true,backupVerified:true,readOnly:true,
     backupDeploymentCounts:{raw:b.deployments.length,versioned:backupVersioned.length,
       unversioned:b.deployments.length-backupVersioned.length}};
