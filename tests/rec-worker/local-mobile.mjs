@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {localWorker} from './harness.mjs';
 import {passwordRecord} from '../../rec-worker/passwords.mjs';
 const {chromium}=createRequire(import.meta.url)('playwright');
-const origin='https://rec-fictif.compte-fictif.workers.dev',password='Fictitious mobile password 2026!',env={APP_ENV:'REC',REC_SERVER_URL:origin,REC_AUTH_MODE:'local',REC_BACKEND_ENABLED:'false',REC_BOOTSTRAP_ADMIN:JSON.stringify({id:randomUUID(),username:'admin-mobile',role:'admin',password:passwordRecord(password)})};
+const origin='https://rec-fictif.compte-fictif.workers.dev',password='Fictitious mobile password 2026!',env={APP_ENV:'REC',REC_SERVER_URL:origin,REC_AUTH_MODE:'local',REC_BACKEND_ENABLED:'false',REC_BOOTSTRAP_ADMIN:JSON.stringify({id:randomUUID(),username:'admin-mobile',role:'admin',password:await passwordRecord(password)})};
 const w=await localWorker({cfg:{base:origin},site:new URL('../../rec-server/public',import.meta.url).pathname,productionEnv:env});
 const browser=await chromium.launch({headless:true,executablePath:process.env.REC_CHROMIUM_PATH || '/usr/bin/chromium',args:['--no-sandbox']});
 let business=false,revision=0;const transactions=[],units=Array.from({length:12},(_,i)=>({num:String(i+1).padStart(2,'0'),type:'F3',locataire:'FICTIF '+(i+1),loyer:i===11?22000:18000})),categories=[{id:'loyer',activity:'depot',label:'Loyer',subcategories:[]},{id:'travaux',activity:'headm',label:'Travaux',subcategories:[]}];
