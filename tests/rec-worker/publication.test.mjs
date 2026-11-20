@@ -10,7 +10,7 @@ function candidate(){const root=mkdtempSync(tmpdir()+'/rec-publication-');mkdirS
 function env(hash){return {GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REF:'refs/heads/main',GITHUB_REPOSITORY:target.repository,GITHUB_SHA:sha,GITHUB_WORKFLOW_SHA:sha,REC_PUBLICATION_CONFIRMED:'true',REC_RELEASE_HASH:hash,CLOUDFLARE_API_TOKEN:token};}
 const bindings=()=>[...Object.entries(releaseConfig().vars).map(([name,text])=>({name,text,type:'plain_text'})),{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious-namespace'},{name:'ASSETS',type:'assets'}];
 function oauthBindings(){return [{name:'REC_OAUTH_CLIENT_ID',type:'plain_text',text:'12345-fictitious.apps.googleusercontent.com'},{name:'REC_OAUTH_CLIENT_SECRET',type:'secret_text'},{name:'REC_GATEWAY_KEY',type:'secret_text'}];}
-function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{enabled:false}},assetChanged=false,oauth=false,removeOAuthAfter=false}={}){
+function fakeRemote(out,{missing=false,enabled=true,backendActive=true,postLogs={observability:{enabled:false}},assetChanged=false,oauth=false,removeOAuthAfter=false}={}){
  const calls=[];let deployed=false;
  return {calls,deployed:()=>{deployed=true;},fetcher:async(url,options={})=>{
   calls.push({url,method:options.method || 'GET'});
@@ -20,13 +20,13 @@ function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{ena
    if(url.endsWith('/script-settings'))return Response.json({success:true,result:postLogs});
    assert.ok(url.endsWith('/workers/scripts/'+target.worker+'/settings'));
    if(missing)return Response.json({success:false,errors:[{message:'MUST_NOT_BE_LOGGED'}]},{status:404});
-   return Response.json({success:true,result:{bindings:[...(deployed?bindings():[]),...(oauth && (!deployed || !removeOAuthAfter)?oauthBindings():[])]}});
+   return Response.json({success:true,result:{bindings:[...bindings().map(b=>b.name==='REC_BACKEND_ENABLED'&&!backendActive?{...b,text:'false'}:b),...(oauth && (!deployed || !removeOAuthAfter)?oauthBindings():[])]}});
   }
   assert.equal(new URL(url).origin,target.origin);const path=new URL(url).pathname;
   if(path==='/rec-config.mjs')return new Response('export default Object.freeze('+JSON.stringify({apiBase:target.origin})+');');
   if(['/.env','/manifest.json','/worker.mjs'].includes(path))return new Response('',{status:404});
   if(['/api','/auth/start'].includes(path))return Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status:403});
-  if(path==='/local/session')return Response.json({ok:true,user:null,csrf:null,backendEnabled:false,bootstrapRequired:true});
+  if(path==='/local/session')return Response.json({ok:true,user:null,csrf:null,backendEnabled:backendActive,bootstrapRequired:false});
   if(path==='/local/api')return Response.json({ok:false,error:'SESSION_REQUIRED'},{status:403});
   return new Response(assetChanged?'changed':readFileSync(out+'/public'+(path==='/'?'/local/index.html':path)),{headers:{'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"}});
  }};
@@ -42,21 +42,21 @@ test('artefact : sources, config fixe, intégrité et absence de fichier supplé
   assert.throws(()=>verifyRelease(c.out,{sourceSha:'d'.repeat(40)}),/WRONG_RELEASE_SOURCE/);
   assert.throws(()=>verifyRelease(c.out,{expectedHash:'0'.repeat(64)}),/RELEASE_HASH_MISMATCH/);
   writeFileSync(c.out+'/extra.txt','fictitious');assert.throws(()=>verifyRelease(c.out),/RELEASE_HASH_MISMATCH/);rmSync(c.out+'/extra.txt');
-  const p=c.out+'/wrangler.jsonc',original=readFileSync(p);const config=JSON.parse(original);config.vars.REC_BACKEND_ENABLED='true';writeFileSync(p,JSON.stringify(config));assert.throws(()=>verifyRelease(c.out),/RELEASE_HASH_MISMATCH/);writeFileSync(p,original);
+  const p=c.out+'/wrangler.jsonc',original=readFileSync(p);const config=JSON.parse(original);config.vars.REC_BACKEND_ENABLED='false';writeFileSync(p,JSON.stringify(config));assert.throws(()=>verifyRelease(c.out),/RELEASE_HASH_MISMATCH/);writeFileSync(p,original);
   writeFileSync(c.out+'/worker.js','changed');assert.throws(()=>verifyRelease(c.out),/RELEASE_HASH_MISMATCH/);
  }finally{rmSync(c.root,{recursive:true,force:true});}
 });
-test('refuse les secrets/propriétés inattendues, backend actif et DO étranger AVANT remplacement',()=>{
- for(const b of [{name:'REC_OAUTH_CLIENT_SECRET',type:'plain_text',text:'exposed'},{name:'REC_GATEWAY_KEY',type:'plain_text',text:'exposed'},{name:'REC_OAUTH_CLIENT_ID',type:'plain_text',text:'invalid'},{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/WRONG/exec'},{name:'REC_BACKEND_ENABLED',type:'plain_text',text:'true'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'Other',namespace_id:'fictitious'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious',script_name:'other'}])assert.throws(()=>checkSettings({bindings:[b]}));
- assert.throws(()=>checkSettings({bindings:oauthBindings()}),/OAUTH_CONFIGURATION_INCOMPLETE/);
- checkSettings({bindings:[]});checkSettings({bindings:bindings()},{after:true});assert.throws(()=>checkSettings({bindings:[]},{after:true}),/MISSING_DEPLOYED_BINDING/);
+test('refuse les secrets/propriétés inattendues, backend inactif et DO étranger AVANT remplacement',()=>{
+ for(const b of [{name:'REC_OAUTH_CLIENT_SECRET',type:'plain_text',text:'exposed'},{name:'REC_GATEWAY_KEY',type:'plain_text',text:'exposed'},{name:'REC_OAUTH_CLIENT_ID',type:'plain_text',text:'invalid'},{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/WRONG/exec'},{name:'REC_BACKEND_ENABLED',type:'plain_text',text:'false'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'Other',namespace_id:'fictitious'},{name:'REC_AUTH',type:'durable_object_namespace',class_name:'RecAuth',namespace_id:'fictitious',script_name:'other'}])assert.throws(()=>checkSettings({bindings:[b]}));
+ assert.throws(()=>checkSettings({bindings:[bindings()[2],...oauthBindings()]}),/OAUTH_CONFIGURATION_INCOMPLETE/);
+ assert.throws(()=>checkSettings({bindings:[]}),/REC_BACKEND_NOT_ACTIVE/);checkSettings({bindings:bindings()},{after:true});assert.throws(()=>checkSettings({bindings:[]},{after:true}),/REC_BACKEND_NOT_ACTIVE/);
 });
 test('OAuth REC : quatre paramètres requis, secrets privés et cible Apps Script épinglée',()=>{
  const deployment='FICTITIOUS_REC_DEPLOYMENT',pin=hex(deployment);
- const configured=[...oauthBindings(),{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/'+deployment+'/exec'}];
+ const configured=[bindings()[2],...oauthBindings(),{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/'+deployment+'/exec'}];
  assert.equal(checkSettings({bindings:configured},{deploymentPin:pin}).oauthConfigured,true);
  assert.throws(()=>checkSettings({bindings:configured},{deploymentPin:hex('WRONG')}),/UNEXPECTED_EXISTING_BINDING/);
- for(const b of configured){assert.throws(()=>checkSettings({bindings:configured.filter(x=>x!==b)},{deploymentPin:pin}),/OAUTH_CONFIGURATION_INCOMPLETE/);}
+ for(const b of configured.filter(b=>b.name!=='REC_BACKEND_ENABLED')){assert.throws(()=>checkSettings({bindings:configured.filter(x=>x!==b)},{deploymentPin:pin}),/OAUTH_CONFIGURATION_INCOMPLETE/);}
 });
 test('OAuth présent sans configuration complète : publication bloquée avant toute écriture',async()=>{
  const c=candidate();try{const remote=fakeRemote(c.out,{oauth:true});let writes=0;
@@ -67,15 +67,15 @@ test('OAuth présent sans configuration complète : publication bloquée avant t
 test('contrôle public OAuth préparé : requêtes GET seulement et API privée fermée',async()=>{
  const c=candidate();try{const remote=fakeRemote(c.out,{oauth:true});
   const result=await verifyPublic(c.out,{fetcher:remote.fetcher,oauthConfigured:true});
-  assert.equal(result.status,'verified_public_interface_backend_disabled');
+  assert.equal(result.status,'verified_public_interface_backend_active');
   assert.deepEqual(remote.calls.filter(x=>x.method==='POST').map(x=>new URL(x.url).pathname),['/local/api']);
  }finally{rmSync(c.root,{recursive:true,force:true});}
 });
 test('publication simulée : existence exigée, aucun autre Worker, assets exacts et API fermée',async()=>{
  const c=candidate();try{
-  for(const options of [{missing:true},{enabled:false}]){const remote=fakeRemote(c.out,options);let writes=0;await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;}}));assert.equal(writes,0);}
+  for(const options of [{missing:true},{enabled:false},{backendActive:false}]){const remote=fakeRemote(c.out,options);let writes=0;await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;}}));assert.equal(writes,0);}
   const remote=fakeRemote(c.out);let writes=0;const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async config=>{writes++;assert.equal(config,c.out+'/wrangler.jsonc');remote.deployed();}});
-  assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');assert.equal(remote.calls.some(c=>/google|other|dzkoora/i.test(c.url)),false);
+  assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_active');assert.equal(remote.calls.some(c=>/google|other|dzkoora/i.test(c.url)),false);
   for(const c of remote.calls.filter(c=>c.url.startsWith('https://api.cloudflare.com/')))assert.equal(c.method,'GET');
   await assert.rejects(verifyPublic(c.out,{fetcher:fakeRemote(c.out,{assetChanged:true}).fetcher}),/PUBLIC_ASSET_MISMATCH/);
  }finally{rmSync(c.root,{recursive:true,force:true});}
@@ -106,7 +106,7 @@ test('Individual Workers Editor : aucun appel compte global, contrôles Worker e
   const remote=fakeRemote(c.out);let writes=0,globalCalls=0;
   const scoped=async(url,options)=>{if(new URL(url).pathname.endsWith('/workers/subdomain')){globalCalls++;return Response.json({success:false,errors:[{message:'FICTITIOUS_PRIVATE_ERROR'}]},{status:400});}return remote.fetcher(url,options);};
   const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:scoped,deploy:async()=>{writes++;remote.deployed();}});
-  assert.equal(globalCalls,0);assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');
+  assert.equal(globalCalls,0);assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_active');
   assert.ok(remote.calls[0].url.endsWith('/workers/scripts/'+target.worker+'/subdomain'));
   const denied=fakeRemote(c.out,{enabled:false});writes=0;
   await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:denied.fetcher,deploy:async()=>{writes++;}}),/WORKER_SUBDOMAIN_NOT_ENABLED/);assert.equal(writes,0);
@@ -158,7 +158,7 @@ test('publication simulée après logs OFF nullable : tous les contrôles public
  const c=candidate();try{
   for(const postLogs of [{logpush:false,observability:null,tail_consumers:[]},{logpush:false,tail_consumers:null}]){
    const remote=fakeRemote(c.out,{postLogs});let writes=0;const result=await publish(c.out,{env:env(c.receipt.sha256),fetcher:remote.fetcher,deploy:async()=>{writes++;remote.deployed();}});
-   assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_disabled');assert.ok(remote.calls.some(c=>c.url===target.origin+'/auth/start'));
+   assert.equal(writes,1);assert.equal(result.status,'verified_public_interface_backend_active');assert.ok(remote.calls.some(c=>c.url===target.origin+'/auth/start'));
   }
   // Corriger le faux positif ne permet pas de sauter la vérification du frontend.
   const changed=fakeRemote(c.out,{postLogs:{observability:null},assetChanged:true});
@@ -168,6 +168,6 @@ test('publication simulée après logs OFF nullable : tous les contrôles public
 
 test('migration locale : OAuth facultatif, couple HMAC/URL épinglé, bootstrap secret privé',()=>{
  const deployment='FICTITIOUS_REC_DEPLOYMENT',deploymentPin=hex(deployment),backend=[{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/'+deployment+'/exec'},{name:'REC_GATEWAY_KEY',type:'secret_text'}];
- const settings=checkSettings({bindings:[...backend,{name:'REC_BOOTSTRAP_ADMIN',type:'secret_text'}]},{deploymentPin});assert.equal(settings.oauthConfigured,false);assert.equal(settings.backendConfigured,true);assert.equal(settings.bootstrapConfigured,true);
+ const settings=checkSettings({bindings:[bindings()[2],...backend,{name:'REC_BOOTSTRAP_ADMIN',type:'secret_text'}]},{deploymentPin});assert.equal(settings.oauthConfigured,false);assert.equal(settings.backendConfigured,true);assert.equal(settings.bootstrapConfigured,true);
  assert.throws(()=>checkSettings({bindings:[{name:'REC_BOOTSTRAP_ADMIN',type:'plain_text',text:'FICTITIOUS'}]}),/UNEXPECTED_EXISTING_BINDING/);assert.equal(releaseConfig().keep_vars,true);assert.equal(releaseConfig().vars.REC_AUTH_MODE,'local');
 });
