@@ -2,7 +2,7 @@
 import {pathToFileURL} from 'node:url';
 import {Google,PrivateDrive} from './google.mjs';
 import {inspect} from './core.mjs';
-import {inspectPendingDeploy,RECOVERY} from './inspect-pending-deploy.mjs';
+import {inspectPendingDeploy,RECOVERY,RECOVERY_V3} from './inspect-pending-deploy.mjs';
 import {reconciliationFetcher} from './reconcile-version.mjs';
 import {Refusal,requireThat,isHash,digest,policyFromEnv,canonical} from './validation.mjs';
 
@@ -13,15 +13,17 @@ export function pendingReconciliationGate(env) {
 }
 
 export async function reconcilePendingDeploy({api,store,policy,operationHash,deploymentHash,
-  expected=RECOVERY,now=()=>new Date().toISOString()}) {
+  expected=RECOVERY,expectedVersion=2,now=()=>new Date().toISOString()}) {
   requireThat(isHash(operationHash) && isHash(deploymentHash),'MISSING_PROOF_HASHES');
-  const current=await store.read('operation',RECOVERY.tag);
+  requireThat(expected?.tag===RECOVERY.tag || expected?.tag===RECOVERY_V3.tag,'UNKNOWN_RECOVERY_TARGET');
+  const archiveTag='reconcile-'+expected.tag;
+  const current=await store.read('operation',expected.tag);
   requireThat(current && ['pending','done'].includes(current.value.status),'MISSING_OPERATION');
-  const archived=await store.read('backup',ARCHIVE);
+  const archived=await store.read('backup',archiveTag);
   const original=current.value.status==='pending'?current.value:archived?.value.originalOperation;
   requireThat(original?.status==='pending' && digest(original)===operationHash,'ORIGINAL_OPERATION_MISMATCH');
   const proofStore={
-    read:(kind,tag)=>kind==='operation' && tag===RECOVERY.tag?Promise.resolve({...current,value:original}):store.read(kind,tag),
+    read:(kind,tag)=>kind==='operation' && tag===expected.tag?Promise.resolve({...current,value:original}):store.read(kind,tag),
   };
   async function verify() {
     const pending=await store.pending();
@@ -30,8 +32,8 @@ export async function reconcilePendingDeploy({api,store,policy,operationHash,dep
     const state=await inspect({api,policy});
     const proof=await inspectPendingDeploy({api,store:proofStore,policy,state,
       pending:[{...current,value:original}],expected});
-    requireThat(proof.classification==='new_version_published' && proof.publishedVersion===2 &&
-      proof.createdVersion===2 && proof.publishedHash===expected.hash && proof.backupVerified &&
+    requireThat(proof.classification==='new_version_published' && proof.publishedVersion===expectedVersion &&
+      proof.createdVersion===expectedVersion && proof.publishedHash===expected.hash && proof.backupVerified &&
       proof.existingUrlUnchanged && proof.readOnly,'PUBLISHED_VERSION_NOT_VERIFIED');
     const deployments=state.deployments.filter(d=>d.deploymentConfig?.versionNumber!==undefined);
     requireThat(deployments.length===1 && digest(deployments[0].deploymentId)===deploymentHash &&
@@ -39,7 +41,7 @@ export async function reconcilePendingDeploy({api,store,policy,operationHash,dep
     return {state,proof,deployment:deployments[0]};
   }
   const first=await verify();
-  const archiveValue={schema:1,kind:'backup',tag:ARCHIVE,targetHash:policy.pins.scriptHash,
+  const archiveValue={schema:1,kind:'backup',tag:archiveTag,targetHash:policy.pins.scriptHash,
     sheetHash:policy.pins.sheetHash,account:policy.email,
     createdAt:archived?.value.createdAt || now(),headHash:first.state.headHash,
     content:{files:first.state.content.files},deployments:first.state.deployments,
@@ -47,40 +49,40 @@ export async function reconcilePendingDeploy({api,store,policy,operationHash,dep
   let archive=archived;
   if(!archive) {
     requireThat(current.value.status==='pending','MISSING_RECONCILIATION_BACKUP');
-    await store.create('backup',ARCHIVE,archiveValue);
-    archive=await store.read('backup',ARCHIVE);
+    await store.create('backup',archiveTag,archiveValue);
+    archive=await store.read('backup',archiveTag);
   }
   requireThat(archive && digest(archive.value)===digest(archiveValue),'RECONCILIATION_BACKUP_MISMATCH');
   const second=await verify();
   requireThat(canonical(first.state.content.files)===canonical(second.state.content.files) &&
     canonical(first.state.deployments)===canonical(second.state.deployments),'REMOTE_STATE_CHANGED');
-  const result={operation:'deploy',status:'done',requestTag:RECOVERY.tag,
+  const result={operation:'deploy',status:'done',requestTag:expected.tag,
     backupTag:original.checkpoint.tag,backupHash:original.checkpoint.hash,
-    headHash:expected.hash,versionNumber:2};
+    headHash:expected.hash,versionNumber:expectedVersion};
   const done={...original,status:'done',completedAt:archive.value.createdAt,result,
     deployment:second.deployment,
-    reconciliation:{schema:1,archiveTag:ARCHIVE,archiveHash:digest(archive.value),operationHash,deploymentHash}};
-  const before=await store.read('operation',RECOVERY.tag);
+    reconciliation:{schema:1,archiveTag,archiveHash:digest(archive.value),operationHash,deploymentHash}};
+  const before=await store.read('operation',expected.tag);
   requireThat(before && before.id===current.id && digest(before.value)===digest(current.value),'OPERATION_CHANGED');
   if(current.value.status==='done')requireThat(digest(current.value)===digest(done),'COMPLETED_RECEIPT_MISMATCH');
   else await store.update(before,done);
-  const after=await store.read('operation',RECOVERY.tag);
+  const after=await store.read('operation',expected.tag);
   requireThat(after && after.id===current.id && digest(after.value)===digest(done),'RECEIPT_VERIFICATION_FAILED');
-  return {status:'reconciled',replayed:current.value.status==='done',version:2,
+  return {status:'reconciled',replayed:current.value.status==='done',version:expectedVersion,
     archiveHash:digest(archive.value),originalBackupPreserved:true,appsScriptWrites:0};
 }
 
-async function main() {
+export async function main(expected=RECOVERY,expectedVersion=2) {
   pendingReconciliationGate(process.env);
   const policy=policyFromEnv(process.env);
   const mask=value=>process.stdout.write('::add-mask::'+String(value).replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')+'\n');
   let operationId='';
   const api=new Google({policy,fetcher:reconciliationFetcher({operationId:()=>operationId}),mask});
   await api.authenticate(JSON.parse(process.env.REC_GOOGLE_OAUTH || '{}'));
-  const store=new PrivateDrive(api),record=await store.read('operation',RECOVERY.tag);
+  const store=new PrivateDrive(api),record=await store.read('operation',expected.tag);
   requireThat(record,'MISSING_OPERATION');operationId=record.id;
   console.log(JSON.stringify(await reconcilePendingDeploy({api,store,policy,
-    deploymentHash:process.env.REC_EXPECTED_DEPLOYMENT_HASH,
+    deploymentHash:process.env.REC_EXPECTED_DEPLOYMENT_HASH,expected,expectedVersion,
     operationHash:process.env.REC_EXPECTED_OPERATION_HASH}),null,2));
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href)
