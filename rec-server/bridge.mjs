@@ -1,9 +1,14 @@
 import {mac,equal,requireThat,random,pins} from './security.mjs';
-const actions=new Set(['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list']);
-export function authorized(body,user){requireThat(body && actions.has(body.action),'ACTION_NOT_ALLOWED');if(['v2.write','v2.import','rec.testTransaction.create'].includes(body.action))requireThat(user.role==='admin','FORBIDDEN');}
+const actions=new Set(['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list','rec.reference','finance.read','finance.preview','finance.write','finance.configure']);
+export function authorized(body,user){
+ requireThat(body && actions.has(body.action),'ACTION_NOT_ALLOWED');
+ requireThat(['admin','manager','reader'].includes(user.role),'FORBIDDEN');
+ if(['v2.simulate','v2.write','v2.import','finance.configure','rec.testTransaction.create'].includes(body.action))requireThat(user.role==='admin','FORBIDDEN');
+ if(['finance.preview','finance.write'].includes(body.action))requireThat(['admin','manager'].includes(user.role),'FORBIDDEN');
+}
 export function bridge(config,{fetcher=fetch,now=Date.now,nonce=random}={}) {
  async function signed(body,user) {
-  const id=nonce(),payload=JSON.stringify({version:1,timestamp:now(),nonce:id,actor:{email:user.email,sub:user.sub},request:body});
+  const id=nonce(),payload=JSON.stringify({version:user.authMode==='local'?2:1,timestamp:now(),nonce:id,actor:user.authMode==='local'?{id:user.id,role:user.role,authVersion:user.version}:{email:user.email,sub:user.sub},request:body});
   let r=await fetcher(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rec.gateway',payload,mac:mac(payload,config.key)}),redirect:'manual',signal:AbortSignal.timeout(20000)});
   if([302,303].includes(r.status)){
    const location=new URL(r.headers.get('location'));requireThat(location.protocol==='https:' && location.hostname==='script.googleusercontent.com' && !location.username && !location.password && !location.port,'GOOGLE_REDIRECT_REFUSED');

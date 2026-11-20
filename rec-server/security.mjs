@@ -23,12 +23,16 @@ export function frontendConfig(env,{hosting='cloud-run'}={}) {
  requireThat(base.protocol==='https:' && (hosting==='cloudflare' ? /^[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(base.hostname) : hosting==='cloud-run' && base.hostname.endsWith('.run.app')) && !base.port && base.pathname==='/' && !base.search && !base.hash && !base.username && !base.password,'INVALID_SERVER_URL');
  return {base:base.origin,front:front.href,origin:front.origin};
 }
-export function config(env,options) {
+export function backendConfig(env,options) {
  const publicConfig=frontendConfig(env,options);
  const endpoint=new URL(env.REC_APPS_SCRIPT_URL);
  const match=endpoint.href.match(/^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
  requireThat(match && hex(match[1])===pins.deployment,'WRONG_DEPLOYMENT_TARGET');
  requireThat(typeof env.REC_GATEWAY_KEY==='string' && /^[a-f0-9]{64}$/.test(env.REC_GATEWAY_KEY),'INVALID_GATEWAY_KEY');
+ return {...publicConfig,endpoint:endpoint.href,key:env.REC_GATEWAY_KEY};
+}
+export function config(env,options) {
+ const publicConfig=backendConfig(env,options);
  requireThat(typeof env.REC_OAUTH_CLIENT_ID==='string' && env.REC_OAUTH_CLIENT_ID.endsWith('.apps.googleusercontent.com') && env.REC_OAUTH_CLIENT_SECRET,'INVALID_OAUTH_CONFIG');
- return {...publicConfig,endpoint:endpoint.href,key:env.REC_GATEWAY_KEY,clientId:env.REC_OAUTH_CLIENT_ID,clientSecret:env.REC_OAUTH_CLIENT_SECRET,allowed:allowlist(env.REC_USER_ALLOWLIST)};
+ return {...publicConfig,clientId:env.REC_OAUTH_CLIENT_ID,clientSecret:env.REC_OAUTH_CLIENT_SECRET,allowed:allowlist(env.REC_USER_ALLOWLIST)};
 }

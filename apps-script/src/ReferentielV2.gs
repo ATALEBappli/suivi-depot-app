@@ -200,3 +200,36 @@ var ReferentielV2 = (() => {
   }
   return {normalizers:{numero,type,etage,nom},references,empty,validate,apply,legacy,rent,financial,normalize,fingerprint,simulate,importRows,delta,replay};
 })();
+
+// Modèle pur des opérations de TEST REC. Aucun mouvement historique n'est modifié.
+var RecFinance=(function(){
+ const activities=[{id:'depot',label:'Dépôt locatif'},{id:'headm',label:'HEADM — Construction'},{id:'charges',label:'Charges communes'},{id:'famille',label:'Famille / Divers'}];
+ const defaults=[{id:'loyer',activity:'depot',label:'Loyer',subcategories:[]},{id:'travaux',activity:'headm',label:'Travaux',subcategories:[]},{id:'entretien',activity:'charges',label:'Entretien',subcategories:[]},{id:'divers',activity:'famille',label:'Divers',subcategories:[]}];
+ const ensure=(v,c)=>{if(!v)throw Error(c);};
+ function text(v,max){ensure(typeof v==='string' && v.trim() && v.length<=max && !/[\x00-\x1f]/.test(v),'INVALID_FINANCE');return v.trim();}
+ function catalog(value){
+  ensure(Array.isArray(value) && value.length>0 && value.length<=100,'INVALID_CATALOG');const seen={};
+  return value.map(c=>{ensure(c && /^[a-z][a-z0-9_-]{1,49}$/.test(c.id) && !seen[c.id] && activities.some(a=>a.id===c.activity),'INVALID_CATALOG');seen[c.id]=true;
+   ensure(Array.isArray(c.subcategories) && c.subcategories.length<=30 && new Set(c.subcategories).size===c.subcategories.length,'INVALID_CATALOG');
+   if(c.id==='loyer')ensure(c.activity==='depot','INVALID_CATALOG');
+   const subcategories=c.subcategories.map(s=>text(s,80));ensure(new Set(subcategories).size===subcategories.length,'INVALID_CATALOG');
+   return {id:c.id,activity:c.activity,label:text(c.label,80),subcategories};});
+ }
+ function transaction(input,categories,units){
+  ensure(input && typeof input==='object' && !Array.isArray(input),'INVALID_FINANCE');
+  ensure(Object.keys(input).every(k=>['direction','activity','category','subcategory','operationDate','period','amount','payment','unit','description'].includes(k)),'INVALID_FINANCE');
+  const c=categories.find(c=>c.id===input.category && c.activity===input.activity);
+  ensure(c && ['in','out'].includes(input.direction) && ['cash','bank','card','cheque'].includes(input.payment),'INVALID_FINANCE');
+  ensure(typeof input.operationDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(input.operationDate) && new Date(input.operationDate).toISOString().slice(0,10)===input.operationDate,'INVALID_FINANCE');
+  ensure(typeof input.amount==='number' && Number.isFinite(input.amount) && input.amount>0 && input.amount<=100000000 && Math.abs(input.amount*100-Math.round(input.amount*100))<0.000001,'INVALID_FINANCE');
+  ensure(c.subcategories.length?c.subcategories.includes(input.subcategory):!input.subcategory,'INVALID_FINANCE');
+  const result={environment:'REC',testOnly:true,direction:input.direction,activity:c.activity,category:c.id,subcategory:input.subcategory || '',operationDate:input.operationDate,amount:Math.round(input.amount*100)/100,payment:input.payment,description:input.description?text(input.description,300):''};
+  if(c.id==='loyer'){
+   ensure(input.direction==='in' && typeof input.period==='string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(input.period),'INVALID_FINANCE');
+   const matches=units.filter(u=>u.num===input.unit);ensure(matches.length===1 && matches[0].locataire,'INVALID_REFERENCE');
+   result.unit=matches[0].num;result.tenant=matches[0].locataire;result.period=input.period;
+  }else ensure(!input.unit && !input.period,'INVALID_FINANCE');
+  return result;
+ }
+ return {activities,defaults,catalog,transaction};
+})();

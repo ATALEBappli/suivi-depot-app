@@ -46,7 +46,7 @@ function _v2Write_(body) {
   _object_(body,['action','requestId','expectedRevision','command','rows','preview']);
   const actor=_v2Actor_();
   if(!_v2Enabled_())throw new Error('V2_DISABLED');
-  if(typeof body.requestId!=='string' || !/^[A-Za-z0-9_-]{8,100}$/.test(body.requestId) || !Number.isInteger(body.expectedRevision) || body.expectedRevision<0)throw new Error('INVALID_REQUEST');
+  if(typeof body.requestId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/.test(body.requestId) || !Number.isInteger(body.expectedRevision) || body.expectedRevision<0)throw new Error('INVALID_REQUEST');
   const lock=LockService.getScriptLock();lock.waitLock(10000);
   try {
     const l=_v2Load_(), serialized=JSON.stringify(body), prior=l.requests.find(r=>r.id===body.requestId);
@@ -94,7 +94,7 @@ function _recTestList_() {
 function _recTestCreate_(body) {
   if(_recVerifiedActor_?.role!=='admin' || !_v2Enabled_())throw Error('FORBIDDEN');
   _object_(body,['action','requestId','transaction']);
-  if(typeof body.requestId!=='string' || !/^[A-Za-z0-9_-]{8,100}$/.test(body.requestId))throw Error('INVALID_REQUEST');
+  if(typeof body.requestId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/.test(body.requestId))throw Error('INVALID_REQUEST');
   const tx=body.transaction;
   _object_(tx,['environment','testOnly','activity','direction','nature','operationDate','period','amount','payment','logementId','bailId','locataireId','description']);
   if(tx.environment!=='REC' || tx.testOnly!==true || tx.activity!=='rental' || tx.direction!=='in' || tx.nature!=='income' ||
@@ -145,16 +145,25 @@ function _recGateway_(body) {
     key=p.getProperty('REC_GATEWAY_KEY');
     if(!key || !/^[a-f0-9]{64}$/.test(key) || typeof body.payload!=='string' || body.payload.length>600000 || !_recEqual_(body.mac,_recMac_(body.payload,key)))throw Error('FORBIDDEN');
     request=JSON.parse(body.payload);
-    if(request.version!==1 || !Number.isFinite(request.timestamp) || Math.abs(Date.now()-request.timestamp)>120000 || typeof request.nonce!=='string' || !/^[A-Za-z0-9_-]{43}$/.test(request.nonce))throw Error('FORBIDDEN');
+    if(![1,2].includes(request.version) || !Number.isFinite(request.timestamp) || Math.abs(Date.now()-request.timestamp)>120000 || typeof request.nonce!=='string' || !/^[A-Za-z0-9_-]{43}$/.test(request.nonce))throw Error('FORBIDDEN');
     const targetId=p.getProperty('REC_SPREADSHEET_ID') || '',scriptHash=_recHex_(ScriptApp.getScriptId()),sheetHash=_recHex_(targetId);
     if(p.getProperty('APP_ENV')!=='REC' || scriptHash!=='78e98c211f7c0a055fd26ef132598d27e4e91d6fac2adacf9e3c71f7015d0d71' || sheetHash!=='defa8602371f49e0c1f118047af17a5c72c06f858d436884c3f1d902a98cce95')throw Error('FORBIDDEN');
-    const users=JSON.parse(p.getProperty('REC_USER_ALLOWLIST') || '[]');
-    const actor=request.actor;
-    const user=Array.isArray(users) && users.find(u=>u.email===actor?.email && u.sub===actor?.sub && ['reader','admin'].includes(u.role));
+    const actor=request.actor;let user;
+    if(request.version===2){
+      if(p.getProperty('REC_AUTH_MODE')!=='local' || p.getProperty('REC_LOCAL_AUTH_ENABLED')!=='1' ||
+        !actor || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(actor.id) ||
+        !['admin','manager','reader'].includes(actor.role) || !Number.isSafeInteger(actor.authVersion) || actor.authVersion<1)throw Error('FORBIDDEN');
+      user={email:'local:'+actor.id,sub:actor.id,role:actor.role};
+    }else{
+      if(p.getProperty('REC_AUTH_MODE')==='local')throw Error('FORBIDDEN');
+      const users=JSON.parse(p.getProperty('REC_USER_ALLOWLIST') || '[]');
+      user=Array.isArray(users) && users.find(u=>u.email===actor?.email && u.sub===actor?.sub && ['reader','admin'].includes(u.role));
+    }
     if(!user)throw Error('FORBIDDEN');
     const action=request.request?.action;
-    if(!['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list'].includes(action))throw Error('FORBIDDEN');
-    if(['v2.write','v2.import','rec.testTransaction.create'].includes(action) && user.role!=='admin')throw Error('FORBIDDEN');
+    if(!['rec.status','v2.read','v2.simulate','v2.write','v2.import','rec.testTransaction.create','rec.testTransaction.list','rec.reference','finance.read','finance.preview','finance.write','finance.configure'].includes(action))throw Error('FORBIDDEN');
+    if(['v2.simulate','v2.write','v2.import','rec.testTransaction.create','finance.configure'].includes(action) && user.role!=='admin')throw Error('FORBIDDEN');
+    if(['finance.preview','finance.write'].includes(action) && !['admin','manager'].includes(user.role))throw Error('FORBIDDEN');
     _recVerifiedActor_={email:user.email,sub:user.sub,role:user.role,targetId};
     _checkedSheets_();
     const lock=LockService.getScriptLock();lock.waitLock(10000);
@@ -163,10 +172,56 @@ function _recGateway_(body) {
       if(cache.get(nonceKey))throw Error('FORBIDDEN');cache.put(nonceKey,'1',300);
     } finally {lock.releaseLock();}
     verified=true;
-    const response=action==='rec.status'?{ok:true,environment:'REC',scriptHash,sheetHash,active:_v2Enabled_(),canWrite:_v2Enabled_() && user.role==='admin',testTransactionsEnabled:p.getProperty('REC_TEST_TRANSACTIONS')==='1'}:action==='rec.testTransaction.list'?_recTestList_():action==='rec.testTransaction.create'?_recTestCreate_(request.request):v2Client(request.request);
+    const response=action==='rec.status'?{ok:true,environment:'REC',scriptHash,sheetHash,active:_v2Enabled_(),canWrite:_v2Enabled_() && user.role==='admin',testTransactionsEnabled:p.getProperty('REC_TEST_TRANSACTIONS')==='1'}:action==='rec.reference'?_recReference_():action.indexOf('finance.')===0?_recFinance_(request.request):action==='rec.testTransaction.list'?_recTestList_():action==='rec.testTransaction.create'?_recTestCreate_(request.request):v2Client(request.request);
     const payload=JSON.stringify({nonce:request.nonce,response});return _json_({payload,mac:_recMac_(payload,key)});
   }catch {
     if(verified){const payload=JSON.stringify({nonce:request.nonce,response:{ok:false,error:'REC_REQUEST_FAILED'}});return _json_({payload,mac:_recMac_(payload,key)});}
     return _json_({ok:false,error:'FORBIDDEN'});
   }finally{_recVerifiedActor_=null;}
+}
+
+// Journal distinct, additif, exclusivement REC ; aucune réutilisation des transactions historiques.
+const REC_FINANCE_HEADER=['request_id','payload_json','created_at','actor'];
+function _recFinanceState_(create){
+ if(!_recVerifiedActor_)throw Error('FORBIDDEN');
+ const book=_v2Book_();let sheet=book.getSheetByName('rec_finance_commits');
+ if(!sheet && create){sheet=book.insertSheet('rec_finance_commits');sheet.appendRow(REC_FINANCE_HEADER);}
+ if(sheet && (sheet.getLastColumn()!==4 || JSON.stringify(sheet.getRange(1,1,1,4).getValues()[0])!==JSON.stringify(REC_FINANCE_HEADER)))throw Error('INVALID_FINANCE_SCHEMA');
+ const rows=sheet?sheet.getDataRange().getValues().slice(1):[];
+ let categories=RecFinance.defaults;const transactions=[];
+ rows.forEach(r=>{const event=JSON.parse(r[1]);if(event.kind==='catalog')categories=RecFinance.catalog(event.categories);else if(event.kind==='transaction')transactions.push({...event.transaction,requestId:r[0],createdAt:r[2]});else throw Error('INVALID_FINANCE_SCHEMA');});
+ return {sheet,rows,categories,transactions,revision:rows.length};
+}
+function _recReference_(){return {ok:true,environment:'REC',units:_readConfigLogements_().map(u=>({num:String(u.num),type:u.type,locataire:u.locataire,loyer:u.loyer}))};}
+function _recFinance_(body){
+ const write=['finance.write','finance.configure'].includes(body.action);
+ if(write && (PropertiesService.getScriptProperties().getProperty('REC_FINANCE_ENABLED')!=='1' || !['admin','manager'].includes(_recVerifiedActor_.role)))throw Error('FORBIDDEN');
+ if(body.action==='finance.configure' && _recVerifiedActor_.role!=='admin')throw Error('FORBIDDEN');
+ const lock=write?LockService.getScriptLock():null;if(lock)lock.waitLock(10000);
+ try{
+  const state=_recFinanceState_(false);
+  if(body.action==='finance.read')return {ok:true,environment:'REC',testOnly:true,revision:state.revision,activities:RecFinance.activities,categories:state.categories,transactions:state.transactions};
+  if(body.action==='finance.configure'){
+   const event={kind:'catalog',categories:RecFinance.catalog(body.categories)};
+   return _recFinanceAppend_(body,state,event);
+  }
+  const transaction=RecFinance.transaction(body.transaction,state.categories,_recReference_().units);
+  const previewHash=_recHex_(JSON.stringify({revision:state.revision,transaction}));
+  if(body.action==='finance.preview')return {ok:true,environment:'REC',testOnly:true,revision:state.revision,transaction,previewHash};
+  if(body.action!=='finance.write')throw Error('FORBIDDEN');
+  // Reprise idempotente même si le premier append a réussi avant interruption.
+  const event={kind:'transaction',transaction};const existing=state.rows.find(r=>r[0]===body.requestId);
+  if(existing)return _recFinanceAppend_(body,state,event);
+  if(previewHash!==body.previewHash)throw Error('PREVIEW_CHANGED');
+  return _recFinanceAppend_(body,state,event);
+ }finally{if(lock)lock.releaseLock();}
+}
+function _recFinanceAppend_(body,state,event){
+ if(typeof body.requestId!=='string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/.test(body.requestId))throw Error('INVALID_REQUEST');
+ const serialized=JSON.stringify(event);if(serialized.length>40000)throw Error('COMMIT_TOO_LARGE');
+ const existing=state.rows.find(r=>r[0]===body.requestId);
+ if(existing){if(existing[1]!==serialized)throw Error('IDEMPOTENCY_CONFLICT');return {ok:true,revision:state.revision,replayed:true,testOnly:true};}
+ if(body.expectedRevision!==state.revision)throw Error('STALE_REVISION');
+ const sheet=state.sheet || _recFinanceState_(true).sheet;sheet.appendRow([body.requestId,serialized,new Date().toISOString(),_recVerifiedActor_.email]);
+ return {ok:true,revision:state.revision+1,replayed:false,testOnly:true};
 }

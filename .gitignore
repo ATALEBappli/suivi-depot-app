@@ -23,3 +23,6 @@ rec-worker/node_modules/
 rec-worker/.wrangler/
 rec-worker/.dev.vars*
 rec-worker/generated-manifest.mjs
+
+# Dérivés de mots de passe privés, jamais versionnés.
+*.private.json

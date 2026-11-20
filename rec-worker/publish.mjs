@@ -29,7 +29,7 @@ export function checkSettings(settings,{after=false,deploymentPin=pins.deploymen
   requireThat(!seen.has(b.name),'UNEXPECTED_EXISTING_BINDING');seen.add(b.name);
   if(b.name==='ASSETS')requireThat(b.type==='assets','UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_AUTH')requireThat(b.type==='durable_object_namespace' && b.class_name==='RecAuth' && typeof b.namespace_id==='string' && (!b.script_name || b.script_name===target.worker),'WRONG_DURABLE_OBJECT');
-  else if(['REC_OAUTH_CLIENT_SECRET','REC_GATEWAY_KEY'].includes(b.name))requireThat(b.type==='secret_text','UNEXPECTED_EXISTING_BINDING');
+  else if(['REC_OAUTH_CLIENT_SECRET','REC_GATEWAY_KEY','REC_BOOTSTRAP_ADMIN'].includes(b.name))requireThat(b.type==='secret_text','UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_OAUTH_CLIENT_ID')requireThat(b.type==='plain_text' && /^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(b.text || ''),'UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_APPS_SCRIPT_URL'){
    const match=b.type==='plain_text' && typeof b.text==='string' && b.text.match(/^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
@@ -38,10 +38,9 @@ export function checkSettings(settings,{after=false,deploymentPin=pins.deploymen
   else requireThat(b.type==='plain_text' && Object.hasOwn(vars,b.name) && b.text===vars[b.name],'UNEXPECTED_EXISTING_BINDING');
  }
  if(after)requireThat([...Object.keys(vars),'REC_AUTH','ASSETS'].every(name=>name==='ASSETS' || seen.has(name)),'MISSING_DEPLOYED_BINDING');
- const optional=['REC_OAUTH_CLIENT_ID','REC_OAUTH_CLIENT_SECRET','REC_APPS_SCRIPT_URL','REC_GATEWAY_KEY'];
- const count=optional.filter(name=>seen.has(name)).length;
- requireThat(count===0 || count===optional.length,'OAUTH_CONFIGURATION_INCOMPLETE');
- return {oauthConfigured:count===optional.length};
+ const oauth=['REC_OAUTH_CLIENT_ID','REC_OAUTH_CLIENT_SECRET'],backend=['REC_APPS_SCRIPT_URL','REC_GATEWAY_KEY'];
+ const complete=names=>{const n=names.filter(name=>seen.has(name)).length;requireThat(n===0 || n===names.length,'OAUTH_CONFIGURATION_INCOMPLETE');return n===names.length;};
+ return {oauthConfigured:complete(oauth),backendConfigured:complete(backend),bootstrapConfigured:seen.has('REC_BOOTSTRAP_ADMIN')};
 }
 // ScriptSetting.observability et tail_consumers sont optionnels et nullables.
 // Absence = fonctionnalité non configurée ; un objet présent doit rester explicite.
@@ -61,10 +60,10 @@ export function checkLogSettings(settings){
   if(!empty(channel.destinations))reject();
  }
 }
-const releaseVars=()=>({APP_ENV:'REC',REC_SERVER_URL:target.origin,REC_BACKEND_ENABLED:'false',REC_USER_ALLOWLIST:'[]'});
+const releaseVars=()=>({APP_ENV:'REC',REC_SERVER_URL:target.origin,REC_BACKEND_ENABLED:'false',REC_USER_ALLOWLIST:'[]',REC_AUTH_MODE:'local'});
 export async function verifyPublic(directory,{fetcher=fetch,oauthConfigured=false}={}){
  const receipt=verifyRelease(directory),get=path=>fetcher(target.origin+path,{redirect:'error',signal:AbortSignal.timeout(20000)});
- const root=await get('/'),index=receipt.files.find(f=>f.path==='public/index.html');
+ const root=await get('/'),index=receipt.files.find(f=>f.path==='public/local/index.html');
  requireThat(root.ok && hex(new Uint8Array(await root.arrayBuffer()))===index?.sha256 && root.headers.get('content-security-policy')?.includes("frame-ancestors 'none'"),'PUBLIC_ASSET_MISMATCH');
  for(const f of receipt.files.filter(f=>f.path.startsWith('public/') && f.path!=='public/manifest.json')){
   const path='/'+f.path.slice(7),r=await get(path);requireThat(r.ok && hex(new Uint8Array(await r.arrayBuffer()))===f.sha256,'PUBLIC_ASSET_MISMATCH');
@@ -72,10 +71,12 @@ export async function verifyPublic(directory,{fetcher=fetch,oauthConfigured=fals
  const config=await get('/rec-config.mjs');requireThat(config.ok && (await config.text())==='export default Object.freeze('+JSON.stringify({apiBase:target.origin})+');','WRONG_PUBLIC_ORIGIN');
  for(const path of ['/.env','/manifest.json','/worker.mjs'])requireThat((await get(path)).status===404,'PRIVATE_FILE_EXPOSED');
  for(const path of ['/api','/auth/start']){
-  const r=await fetcher(target.origin+path,oauthConfigured?{method:'GET',headers:{Origin:target.origin},redirect:'error',signal:AbortSignal.timeout(20000)}:{method:'POST',headers:{Origin:target.origin,'Content-Type':'application/json'},body:'{}',redirect:'error',signal:AbortSignal.timeout(20000)});
-  const body=await r.json();
-  requireThat(oauthConfigured?r.status===400 && body.error==='REC_REQUEST_FAILED':r.status===503 && body.error==='REC_SERVER_CONFIGURATION_REQUIRED','PRIVATE_ENTRY_NOT_CLOSED');
+  const r=await get(path),body=await r.json();requireThat(r.status===403 && body.ok===false,'PRIVATE_ENTRY_NOT_CLOSED');
  }
+ const session=await get('/local/session'),state=await session.json();
+ requireThat(session.ok && state.ok===true && state.user===null && state.csrf===null && state.backendEnabled===false,'PRIVATE_ENTRY_NOT_CLOSED');
+ const anonymous=await fetcher(target.origin+'/local/api',{method:'POST',headers:{Origin:target.origin,'Content-Type':'application/json'},body:JSON.stringify({action:'rec.status'}),redirect:'error',signal:AbortSignal.timeout(20000)});
+ const blocked=await anonymous.json();requireThat(anonymous.status===403 && blocked.error==='SESSION_REQUIRED','PRIVATE_ENTRY_NOT_CLOSED');
  return {status:'verified_public_interface_backend_disabled',sha256:receipt.sha256,url:target.origin};
 }
 export async function publish(directory,{env=process.env,fetcher=fetch,deploy}={}){
@@ -86,7 +87,7 @@ export async function publish(directory,{env=process.env,fetcher=fetch,deploy}={
  await deploy(resolve(directory,'wrangler.jsonc'));
  verifyRelease(directory,{sourceSha:env.GITHUB_SHA,expectedHash:receipt.sha256});
  const post=checkSettings(await cloudflareRead(workerPath+'/settings',token,fetcher,'POST_WORKER_SETTINGS'),{after:true});
- requireThat(pre.oauthConfigured===post.oauthConfigured,'OAUTH_CONFIGURATION_CHANGED');
+ requireThat(pre.oauthConfigured===post.oauthConfigured && pre.backendConfigured===post.backendConfigured && pre.bootstrapConfigured===post.bootstrapConfigured,'OAUTH_CONFIGURATION_CHANGED');
  const logs=await cloudflareRead(workerPath+'/script-settings',token,fetcher,'POST_LOG_SETTINGS');
  checkLogSettings(logs);
  return verifyPublic(directory,{fetcher,oauthConfigured:post.oauthConfigured});
