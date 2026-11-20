@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {reconcilePendingDeploy,pendingReconciliationGate,ARCHIVE} from '../../scripts/rec-automation/reconcile-pending-deploy.mjs';
-import {RECOVERY} from '../../scripts/rec-automation/inspect-pending-deploy.mjs';
+import {RECOVERY,RECOVERY_V3} from '../../scripts/rec-automation/inspect-pending-deploy.mjs';
 import {setup,policy,candidate,deployment,clone} from './helpers.mjs';
 import {digest,deploymentState} from '../../scripts/rec-automation/validation.mjs';
 
@@ -38,6 +38,32 @@ test('finalise le reçu et préserve la version publiée, puis rejoue sans mutat
   const second=await reconcilePendingDeploy(f);
   assert.equal(second.replayed,true);
   assert.deepEqual(f.getDeployments(),before);assert.deepEqual(f.writes,[]);
+});
+
+test('régularisation version 3 : reçu v3 uniquement, aucune publication ni modification Sheets',async()=>{
+  const f=fixture(),d=f.getDeployments();
+  d[0].deploymentConfig.versionNumber=3;
+  d[0].entryPoints[0].webApp.entryPointConfig.access='ANYONE_ANONYMOUS';
+  d[0].deploymentConfig.description='REC '+f.expected.sourceSha+' '+RECOVERY_V3.tag;
+  f.setDeployments(d);
+  f.versions.set(3,f.versions.get(2));
+  f.api.versions=async()=>[{scriptId:policy.scriptId,versionNumber:3,
+    description:'REC '+f.expected.sourceSha+' '+RECOVERY_V3.tag}];
+  f.b.deployments=[deployment(2)];
+  f.p.tag=RECOVERY_V3.tag;
+  f.p.deploymentsBefore=deploymentState(f.b.deployments,policy);
+  f.p.checkpoint.hash=digest(f.b);
+  f.records.delete('operation:'+RECOVERY.tag);
+  f.records.set('operation:'+RECOVERY_V3.tag,clone(f.p));
+  f.records.set('backup:'+f.b.tag,clone(f.b));
+  f.expected={...f.expected,tag:RECOVERY_V3.tag,backupHash:digest(f.b)};
+  f.operationHash=digest(f.p);
+  f.policy={...f.policy,gatewayTransport:true};
+  const first=await reconcilePendingDeploy({...f,expectedVersion:3});
+  assert.equal(first.version,3);
+  assert.equal(f.records.get('operation:'+RECOVERY_V3.tag).status,'done');
+  assert.deepEqual(f.writes,[]);
+  assert.equal((await reconcilePendingDeploy({...f,expectedVersion:3})).replayed,true);
 });
 
 test('preuves contradictoires et version non publiée refusées avant toute écriture',async()=>{
@@ -85,4 +111,14 @@ test('audit manuel obligatoire et workflow exclusivement manuel',()=>{
   assert.match(workflow,/needs: tests/);
   assert.equal((workflow.match(/github.ref == 'refs\/heads\/main'/g)||[]).length,2);
   assert.doesNotMatch(workflow,/cli\.mjs|contents: write|gh secret/);
+});
+
+test('workflow v3 séparé : diagnostic par défaut, attestation pour la clôture',()=>{
+  const workflow=readFileSync('.github/workflows/rec-reconcile-pending-v3.yml','utf8');
+  assert.match(workflow,/on:\n  workflow_dispatch:/);
+  assert.match(workflow,/default: diagnose/);
+  assert.match(workflow,/inputs\.audit_confirmed == true/);
+  assert.match(workflow,/REC_GATEWAY_TRANSPORT: 'true'/);
+  assert.match(workflow,/environment: REC/);
+  assert.doesNotMatch(workflow,/push:|pull_request:|schedule:|workflow_call:|contents: write/);
 });
