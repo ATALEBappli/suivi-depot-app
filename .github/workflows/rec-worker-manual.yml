@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_existing_free_worker:
-        description: Publier uniquement l’interface sur suivi-depot-rec existant, compte Free confirmé, backend désactivé
+        description: Publier sur le Worker REC existant, backend déjà actif, conserver les secrets et les comptes
         type: boolean
         required: true
         default: false
@@ -47,7 +47,7 @@ jobs:
           SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
           node rec-worker/release.mjs create work/rec-worker-compiled rec-server/public work/rec-worker-release "$SOURCE_SHA" > work/rec-worker-release-summary.json
-          node -e 'const fs=require("node:fs"),r=JSON.parse(fs.readFileSync("work/rec-worker-release-summary.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"sha256="+r.sha256+"\n"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"Source : "+r.sourceSha+"\n\nBundle SHA-256 : "+r.sha256+"\n\nBackend désactivé ; aucun secret dans cet artefact.\n");'
+          node -e 'const fs=require("node:fs"),r=JSON.parse(fs.readFileSync("work/rec-worker-release-summary.json")); fs.appendFileSync(process.env.GITHUB_OUTPUT,"sha256="+r.sha256+"\n"); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,"Source : "+r.sourceSha+"\n\nBundle SHA-256 : "+r.sha256+"\n\nBackend REC actif ; aucun secret dans cet artefact.\n");'
       - name: Tester les octets compilés et la vraie liaison assets locale
         env:
           SOURCE_SHA: ${{ github.workflow_sha }}
