@@ -4,10 +4,11 @@
   "compatibility_date": "2026-07-30",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "keep_vars": true,
   "preview_urls": false,
   "assets": {"directory": "../rec-server/public", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none", "not_found_handling": "none"},
   "durable_objects": {"bindings": [{"name":"REC_AUTH","class_name":"RecAuth"}]},
   "migrations": [{"tag":"v1","new_sqlite_classes":["RecAuth"]}],
   "observability": {"enabled": false},
-  "vars": {"APP_ENV":"REC", "REC_USER_ALLOWLIST":"[]", "REC_BACKEND_ENABLED":"false"}
+  "vars": {"APP_ENV":"REC", "REC_AUTH_MODE":"local", "REC_USER_ALLOWLIST":"[]", "REC_BACKEND_ENABLED":"false"}
 }

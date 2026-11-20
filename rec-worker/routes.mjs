@@ -9,7 +9,11 @@ export function routes(cfg,env,manifest,{beforeAuth=()=>{}}={}){
  return async request=>{
   const url=new URL(request.url);if(url.origin!==cfg.origin)return failure(403);
   if(request.method==='GET' && url.pathname==='/rec-config.mjs')return new Response('export default Object.freeze('+JSON.stringify({apiBase:cfg.base})+');',{headers:{...security,'Content-Type':'text/javascript; charset=utf-8'}});
-  const path=url.pathname==='/'?'/index.html':url.pathname;
+  const path=url.pathname==='/'?(env.REC_AUTH_MODE==='local'?'/local/index.html':'/index.html'):url.pathname;
+  if(url.pathname.startsWith('/local/')){
+   if(env.REC_AUTH_MODE!=='local')return failure(403);
+   if(!assets.has(path))return env.REC_AUTH.get(env.REC_AUTH.idFromName('rec-auth-v1')).fetch(request);
+  }
   if(request.method==='GET' && assets.has(path)){
    const response=await env.ASSETS.fetch(new Request(cfg.base+path)),bytes=await response.arrayBuffer();
    requireThat(response.ok && hex(new Uint8Array(bytes))===assets.get(path).sha256,'FRONTEND_ASSET_CHANGED');
@@ -18,6 +22,7 @@ export function routes(cfg,env,manifest,{beforeAuth=()=>{}}={}){
    return new Response(bytes,{headers});
   }
   if(!['/oauth/callback','/auth/start','/auth/exchange','/auth/logout','/api'].includes(path))return new Response('Not found',{status:404,headers:security});
+  if(env.REC_AUTH_MODE==='local')return failure(403);
   beforeAuth(); // Configuration complète obligatoire avant toute entrée privée.
   return env.REC_AUTH.get(env.REC_AUTH.idFromName('rec-auth-v1')).fetch(request);
  };

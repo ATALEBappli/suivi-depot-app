@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {localApplication,cleanupLocal} from '../../rec-worker/local-auth.mjs';
+import {passwordRecord,verifyPassword,passwordPolicy} from '../../rec-worker/passwords.mjs';
+import {authorized} from '../../rec-server/bridge.mjs';
+import {backendConfig} from '../../rec-server/security.mjs';
+import {localWorker} from './harness.mjs';
+const origin='https://rec-fictif.compte-fictif.workers.dev',password='Fictitious password test 2026!',record=passwordRecord(password);
+export function memory(){const values=new Map();let chain=Promise.resolve();const tx={get:async k=>structuredClone(values.get(k)),put:async(k,v)=>values.set(k,structuredClone(v)),delete:async k=>values.delete(k),list:async({prefix})=>new Map([...values].filter(([k])=>k.startsWith(prefix)).map(([k,v])=>[k,structuredClone(v)]))};return {...tx,values,transaction:fn=>{const r=chain.then(()=>fn(tx));chain=r.catch(()=>{});return r;},getAlarm:async()=>null,setAlarm:async()=>{}};}
+function setup(){let time=Date.now();const storage=memory(),env={APP_ENV:'REC',REC_SERVER_URL:origin,REC_BACKEND_ENABLED:'false',REC_AUTH_MODE:'local',REC_BOOTSTRAP_ADMIN:JSON.stringify({id:randomUUID(),username:'admin-test',role:'admin',password:record})},handler=localApplication(env,storage,{now:()=>time});return {storage,env,handler,advance:()=>{time+=900001;}};}
+async function post(s,path,body={},session,patch={}){const r=await s.handler(new Request(origin+'/local/'+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...(session?{Cookie:session.cookie,'X-REC-CSRF':session.csrf}:{}),...patch},body:JSON.stringify(body)}));return {status:r.status,...await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};}
+async function login(s,username='admin-test',pass=password){return post(s,'login',{username,password:pass});}
+test('PBKDF2 600k, sels uniques, entrée stricte et dérivés sans clair',()=>{const b=passwordRecord(password);assert.equal(passwordPolicy.iterations,600000);assert.notEqual(b.salt,record.salt);assert.equal(verifyPassword(password,b),true);assert.equal(verifyPassword('incorrect',b),false);assert.equal(verifyPassword(password,null),false);assert.equal(JSON.stringify(b).includes(password),false);assert.throws(()=>passwordRecord('short'),/INVALID_PASSWORD/);});
+test('initialisation privée, anonymat, session HttpOnly, CSRF, backend désactivé, expiration et logout',async()=>{const s=setup();const anonymous=await post(s,'api',{action:'rec.status'});assert.equal(anonymous.error,'SESSION_REQUIRED');const l=await login(s);assert.equal(l.ok,true);assert.match(l.headers.get('set-cookie'),/Secure; HttpOnly; SameSite=Strict/);assert.equal(l.user.role,'admin');assert.equal(JSON.stringify(l).includes(record.hash),false);assert.equal((await post(s,'api',{action:'rec.status'},l)).error,'REC_BACKEND_DISABLED');assert.equal((await post(s,'api',{action:'rec.status'},l,{'X-REC-CSRF':'bad'})).error,'FORBIDDEN');assert.equal((await post(s,'api',{action:'rec.status'},l,{Origin:'https://evil.invalid'})).error,'FORBIDDEN');assert.equal((await post(s,'api',{action:'rec.localStatus'},l)).backendEnabled,false);await post(s,'logout',{},l);assert.equal((await post(s,'api',{},l)).error,'SESSION_REQUIRED');const next=await login(s);s.advance();assert.equal((await post(s,'api',{},next)).error,'SESSION_REQUIRED');await cleanupLocal(s.storage,()=>Date.now()+1000000);assert.equal((await s.storage.list({prefix:'local:session:'})).size,0);assert.equal(JSON.stringify([...s.storage.values]).includes(password),false);});
+test('échecs génériques et limite par identifiant ; aucune inscription ni admin par défaut',async()=>{const s=setup();for(let i=0;i<5;i++)assert.equal((await login(s,'absent','incorrect')).error,'AUTH_FAILED');assert.equal((await login(s,'absent')).status,429);s.advance();assert.equal((await login(s,'absent')).status,401);const e={...s.env};delete e.REC_BOOTSTRAP_ADMIN;const handler=localApplication(e,memory());const state=await (await handler(new Request(origin+'/local/session'))).json();assert.equal(state.bootstrapRequired,true);assert.equal(state.user,null);assert.equal((await handler(new Request(origin+'/local/signup'))).status,404);});
+test('initialisation iPhone à jeton privé Cloudflare : usage unique, serveur uniquement, aucun compte Google',async()=>{
+ const s=setup();delete s.env.REC_BOOTSTRAP_ADMIN;s.env.REC_BOOTSTRAP_SETUP_TOKEN='a'.repeat(43);
+ const state=await (await s.handler(new Request(origin+'/local/session'))).json();
+ assert.equal(state.bootstrapRequired,true);assert.equal(state.bootstrapOnPhone,true);
+ assert.equal((await post(s,'bootstrap',{setupToken:'b'.repeat(43),username:'amine',password})).error,'AUTH_FAILED');
+ assert.equal((await login(s,'amine')).error,'AUTH_FAILED');
+ const created=await post(s,'bootstrap',{setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'amine',password});
+ assert.deepEqual({status:created.status,ok:created.ok,initialized:created.initialized},{status:200,ok:true,initialized:true});
+ assert.equal(JSON.stringify(created).includes(password),false);
+ assert.equal(JSON.stringify(created).includes(s.env.REC_BOOTSTRAP_SETUP_TOKEN),false);
+ assert.equal((await login(s,'amine',password)).user.role,'admin');
+ assert.equal((await post(s,'bootstrap',{setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'second',password})).error,'AUTH_FAILED');
+ assert.equal((await (await s.handler(new Request(origin+'/local/session'))).json()).bootstrapOnPhone,false);
+ delete s.env.REC_BOOTSTRAP_SETUP_TOKEN;
+ assert.equal((await login(s,'amine',password)).ok,true);
+});
+test('bootstrap iPhone refusé si jeton absent, trop faible, origine tierce ou après limite',async()=>{
+ const s=setup();delete s.env.REC_BOOTSTRAP_ADMIN;
+ const body={setupToken:'x'.repeat(43),username:'amine',password};
+ assert.equal((await post(s,'bootstrap',body)).error,'AUTH_FAILED');
+ s.env.REC_BOOTSTRAP_SETUP_TOKEN='trop-court';
+ assert.equal((await post(s,'bootstrap',body)).error,'AUTH_FAILED');
+ s.env.REC_BOOTSTRAP_SETUP_TOKEN='x'.repeat(43);
+ assert.equal((await post(s,'bootstrap',body,undefined,{Origin:'https://evil.invalid'})).error,'FORBIDDEN');
+ for(let i=0;i<3;i++)assert.equal((await post(s,'bootstrap',{...body,setupToken:'wrong'})).error,'AUTH_FAILED');
+ assert.equal((await post(s,'bootstrap',body)).status,429);
+ assert.equal((await s.storage.list({prefix:'local:user:'})).size,0);
+});
+test('gestion comptes, dernier admin, révocation rôle et mot de passe, lecteur interdit',async()=>{const s=setup(),admin=await login(s);assert.equal((await post(s,'users',{action:'save',username:'reader-test',role:'reader',active:true,password,currentPassword:password},admin)).ok,true);const reader=await login(s,'reader-test');assert.equal((await post(s,'users',{action:'list'},reader)).error,'FORBIDDEN');for(const action of ['v2.write','v2.simulate','finance.write','finance.configure'])assert.equal((await post(s,'api',{action},reader)).error,'FORBIDDEN');assert.equal((await post(s,'users',{action:'save',username:'reader-test',role:'manager',active:true,currentPassword:password},admin)).ok,true);assert.equal((await post(s,'api',{},reader)).error,'SESSION_REQUIRED');assert.equal((await post(s,'users',{action:'save',username:'admin-test',role:'reader',active:true,currentPassword:password},admin)).error,'LAST_ADMIN');const manager=await login(s,'reader-test');assert.equal((await post(s,'api',{action:'finance.write'},manager)).error,'REC_BACKEND_DISABLED');assert.equal((await post(s,'password',{currentPassword:password,password:'New fictitious password 2026'},manager)).ok,true);assert.equal((await post(s,'api',{},manager)).error,'SESSION_REQUIRED');});
+test('chaque action : matrice serveur et cible PROD refusée avant réseau',()=>{for(const role of ['admin','manager','reader'])for(const action of ['rec.status','rec.reference','finance.read','v2.read','rec.testTransaction.list','v2.simulate','v2.write','v2.import','finance.preview','finance.write','finance.configure','rec.testTransaction.create']){const expected=['v2.simulate','v2.write','v2.import','finance.configure','rec.testTransaction.create'].includes(action)?role==='admin':['finance.preview','finance.write'].includes(action)?role!=='reader':true;if(expected)authorized({action},{role});else assert.throws(()=>authorized({action},{role}),/FORBIDDEN/);}assert.throws(()=>authorized({action:'unknown'},{role:'admin'}),/ACTION_NOT_ALLOWED/);assert.throws(()=>backendConfig({APP_ENV:'PROD',REC_SERVER_URL:origin},{hosting:'cloudflare'}),/REC_ONLY/);assert.throws(()=>backendConfig({APP_ENV:'REC',REC_SERVER_URL:origin,REC_APPS_SCRIPT_URL:'https://script.google.com/macros/s/PROD_FICTIF/exec'},{hosting:'cloudflare'}),/WRONG_DEPLOYMENT_TARGET/);});
+test('véritable workerd / SQLite : mot de passe 600k sans OAuth, routes anciennes closes et backend OFF',async()=>{const s=setup(),w=await localWorker({cfg:{base:origin},site:new URL('../../rec-server/public',import.meta.url).pathname,productionEnv:s.env});try{const root=await w.mf.dispatchFetch(origin+'/');assert.equal(root.status,200);assert.match(await root.text(),/login-form/);const r=await w.mf.dispatchFetch(origin+'/local/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'admin-test',password})});const data=await r.json();assert.equal(r.status,200);assert.equal(data.user.role,'admin');for(const path of ['/api','/auth/start','/oauth/callback'])assert.equal((await w.mf.dispatchFetch(origin+path)).status,403);assert.equal((await w.mf.dispatchFetch(origin+'/local/session',{headers:{Cookie:r.headers.get('set-cookie').split(';')[0]}})).status,200);}finally{await w.close();}});
+test('véritable workerd / SQLite : premier administrateur créé depuis Safari avec jeton privé',async()=>{
+ const s=setup();delete s.env.REC_BOOTSTRAP_ADMIN;s.env.REC_BOOTSTRAP_SETUP_TOKEN='f'.repeat(64);
+ const w=await localWorker({cfg:{base:origin},site:new URL('../../rec-server/public',import.meta.url).pathname,productionEnv:s.env});
+ try{
+  const root=await w.mf.dispatchFetch(origin+'/');assert.match(await root.text(),/bootstrap-form/);
+  const status=await (await w.mf.dispatchFetch(origin+'/local/session')).json();assert.equal(status.bootstrapOnPhone,true);
+  const init=await w.mf.dispatchFetch(origin+'/local/bootstrap',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'amine',password})});
+  assert.equal(init.status,200);assert.equal((await init.json()).initialized,true);
+  const login=await w.mf.dispatchFetch(origin+'/local/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'amine',password})});assert.equal(login.status,200);
+  const second=await w.mf.dispatchFetch(origin+'/local/bootstrap',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'other',password})});assert.equal(second.status,401);
+ }finally{await w.close();}
+});
+test('révocation pendant la lecture du corps : aucun appel métier autorisé avec un rôle périmé',async()=>{const s=setup(),l=await login(s);const body={async *[Symbol.asyncIterator](){for(const[k,v]of s.storage.values)if(k.startsWith('local:user:'))s.storage.values.set(k,{...v,version:v.version+1,role:'reader'});yield new TextEncoder().encode(JSON.stringify({action:'rec.localStatus'}));}};const r=await s.handler({url:origin+'/local/api',method:'POST',headers:new Headers({Origin:origin,'Content-Type':'application/json',Cookie:l.cookie,'X-REC-CSRF':l.csrf}),body});assert.equal((await r.json()).error,'SESSION_REQUIRED');});

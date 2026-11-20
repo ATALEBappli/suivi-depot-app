@@ -25,8 +25,10 @@ function fakeRemote(out,{missing=false,enabled=true,postLogs={observability:{ena
   assert.equal(new URL(url).origin,target.origin);const path=new URL(url).pathname;
   if(path==='/rec-config.mjs')return new Response('export default Object.freeze('+JSON.stringify({apiBase:target.origin})+');');
   if(['/.env','/manifest.json','/worker.mjs'].includes(path))return new Response('',{status:404});
-  if(['/api','/auth/start'].includes(path)){assert.equal(options.method,oauth?'GET':'POST');return oauth?Response.json({ok:false,error:'REC_REQUEST_FAILED'},{status:400}):Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status:503});}
-  return new Response(assetChanged?'changed':readFileSync(out+'/public'+(path==='/'?'/index.html':path)),{headers:{'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"}});
+  if(['/api','/auth/start'].includes(path))return Response.json({ok:false,error:'REC_SERVER_CONFIGURATION_REQUIRED'},{status:403});
+  if(path==='/local/session')return Response.json({ok:true,user:null,csrf:null,backendEnabled:false,bootstrapRequired:true});
+  if(path==='/local/api')return Response.json({ok:false,error:'SESSION_REQUIRED'},{status:403});
+  return new Response(assetChanged?'changed':readFileSync(out+'/public'+(path==='/'?'/local/index.html':path)),{headers:{'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"}});
  }};
 }
 test('gates : jamais push/PR/branche/fork ni workflow différent ; API hors cible refusée',async()=>{
@@ -66,7 +68,7 @@ test('contrôle public OAuth préparé : requêtes GET seulement et API privée 
  const c=candidate();try{const remote=fakeRemote(c.out,{oauth:true});
   const result=await verifyPublic(c.out,{fetcher:remote.fetcher,oauthConfigured:true});
   assert.equal(result.status,'verified_public_interface_backend_disabled');
-  assert.equal(remote.calls.some(x=>x.method==='POST'),false);
+  assert.deepEqual(remote.calls.filter(x=>x.method==='POST').map(x=>new URL(x.url).pathname),['/local/api']);
  }finally{rmSync(c.root,{recursive:true,force:true});}
 });
 test('publication simulée : existence exigée, aucun autre Worker, assets exacts et API fermée',async()=>{
@@ -162,4 +164,10 @@ test('publication simulée après logs OFF nullable : tous les contrôles public
   const changed=fakeRemote(c.out,{postLogs:{observability:null},assetChanged:true});
   await assert.rejects(publish(c.out,{env:env(c.receipt.sha256),fetcher:changed.fetcher,deploy:async()=>changed.deployed()}),/PUBLIC_ASSET_MISMATCH/);
  }finally{rmSync(c.root,{recursive:true,force:true});}
+});
+
+test('migration locale : OAuth facultatif, couple HMAC/URL épinglé, bootstrap secret privé',()=>{
+ const deployment='FICTITIOUS_REC_DEPLOYMENT',deploymentPin=hex(deployment),backend=[{name:'REC_APPS_SCRIPT_URL',type:'plain_text',text:'https://script.google.com/macros/s/'+deployment+'/exec'},{name:'REC_GATEWAY_KEY',type:'secret_text'}];
+ const settings=checkSettings({bindings:[...backend,{name:'REC_BOOTSTRAP_ADMIN',type:'secret_text'}]},{deploymentPin});assert.equal(settings.oauthConfigured,false);assert.equal(settings.backendConfigured,true);assert.equal(settings.bootstrapConfigured,true);
+ assert.throws(()=>checkSettings({bindings:[{name:'REC_BOOTSTRAP_ADMIN',type:'plain_text',text:'FICTITIOUS'}]}),/UNEXPECTED_EXISTING_BINDING/);assert.equal(releaseConfig().keep_vars,true);assert.equal(releaseConfig().vars.REC_AUTH_MODE,'local');
 });
