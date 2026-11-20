@@ -1,0 +1,87 @@
+name: REC — diagnostic et régularisation publication v3
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        required: true
+        default: diagnose
+        options: [diagnose, reconcile]
+        description: Diagnostic lecture seule ou clôture du reçu 44785870895
+      deployment_sha256:
+        type: string
+        required: false
+        description: Empreinte du déploiement obtenue par diagnose (reconcile uniquement)
+      operation_sha256:
+        type: string
+        required: false
+        description: Empreinte du reçu obtenue par diagnose (reconcile uniquement)
+      audit_confirmed:
+        type: boolean
+        default: false
+        description: Autorisation distincte de clôturer ce seul reçu Drive, audit et gel REC confirmés
+
+permissions:
+  contents: read
+concurrency:
+  group: apps-script-rec
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Tester les contrôles sans secrets Google
+        run: node --test tests/rec-automation/*.test.mjs
+  google:
+    needs: prepare
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && vars.REC_AUTOMATION_ENABLED == 'true' && (inputs.operation == 'diagnose' || (inputs.operation == 'reconcile' && vars.REC_MUTATIONS_ENABLED == 'true' && inputs.audit_confirmed == true))
+    environment: REC
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Diagnostic lecture seule
+        if: inputs.operation == 'diagnose'
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_GATEWAY_TRANSPORT: 'true'
+          REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
+          REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}
+          REC_GOOGLE_EMAIL: ${{ secrets.REC_GOOGLE_EMAIL }}
+          REC_OWNER_EMAIL: ${{ secrets.REC_OWNER_EMAIL }}
+          REC_DEPLOYMENT_ID: ${{ secrets.REC_DEPLOYMENT_ID }}
+          REC_GOOGLE_OAUTH: ${{ secrets.REC_GOOGLE_OAUTH }}
+        run: node scripts/rec-automation/diagnose-pending-v3.mjs
+      - name: Clôturer seulement le reçu privé
+        if: inputs.operation == 'reconcile' && inputs.audit_confirmed == true
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
+          REC_RECONCILE_CONFIRMED: ${{ inputs.audit_confirmed }}
+          REC_GATEWAY_TRANSPORT: 'true'
+          REC_EXPECTED_DEPLOYMENT_HASH: ${{ inputs.deployment_sha256 }}
+          REC_EXPECTED_OPERATION_HASH: ${{ inputs.operation_sha256 }}
+          REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
+          REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}
+          REC_GOOGLE_EMAIL: ${{ secrets.REC_GOOGLE_EMAIL }}
+          REC_OWNER_EMAIL: ${{ secrets.REC_OWNER_EMAIL }}
+          REC_DEPLOYMENT_ID: ${{ secrets.REC_DEPLOYMENT_ID }}
+          REC_GOOGLE_OAUTH: ${{ secrets.REC_GOOGLE_OAUTH }}
+        run: node scripts/rec-automation/reconcile-pending-v3.mjs
