@@ -5,8 +5,16 @@ import {routes,authHandler,failure} from './routes.mjs';
 import {durableStore} from './store.mjs';
 import manifest from './generated-manifest.mjs';
 export class RecAuth extends DurableObject {
- constructor(ctx,env){super(ctx,env);this.storage=ctx.storage;this.handler=env.REC_AUTH_MODE==='local'?localApplication(env,ctx.storage):authHandler(config(env,{hosting:'cloudflare'}),env,ctx.storage);}
- async fetch(request){try{return await this.handler(request);}catch{return failure();}}
+ constructor(ctx,env){super(ctx,env);this.storage=ctx.storage;this.localEnv=env.REC_AUTH_MODE==='local'?env:null;this.handler=this.localEnv?null:authHandler(config(env,{hosting:'cloudflare'}),env,ctx.storage);}
+ async fetch(request){try{
+  if(this.localEnv){
+   // Le Worker public écrase cet en-tête avant le transfert interne.
+   const enabled=request.headers.get('X-REC-Edge-Backend');
+   requireThat(enabled==='true' || enabled==='false','INVALID_EDGE_BACKEND_STATE');
+   return await localApplication({...this.localEnv,REC_BACKEND_ENABLED:enabled},this.storage)(request);
+  }
+  return await this.handler(request);
+ }catch{return failure();}}
  async alarm(){await durableStore(this.storage).cleanup();await cleanupLocal(this.storage);}
 }
 export default {
