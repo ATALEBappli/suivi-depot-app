@@ -57,19 +57,28 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
    requireThat(body && typeof body==='object' && !Array.isArray(body),'INVALID_REQUEST');
    if(path==='/local/bootstrap'){
     requireThat(length<=4096,'INVALID_REQUEST');
-    // Le jeton temporaire est un secret Cloudflare saisi directement depuis le téléphone.
-    // Aucune création sans ce secret, ni réinitialisation après la première création.
-    await rate('bootstrap-global',10);
-    await rate('bootstrap-ip:'+hash(request.headers.get('CF-Connecting-IP') || 'local'),5);
-    const token=body.setupToken;
-    requireThat(!initialized && setupAvailable() && typeof token==='string' && token.length<=128 && equal(hash(token),hash(env.REC_BOOTSTRAP_SETUP_TOKEN)),'AUTH_FAILED');
-    const username=usernameInput(body.username),password=passwordRecord(body.password),id=randomUUID();
-    await storage.transaction(async tx=>{
-     requireThat(!(await tx.get('local:initialized')) && (await tx.list({prefix:'local:user:'})).size===0,'AUTH_FAILED');
-     await tx.put(key('user',username),{id,username,role:'admin',active:true,version:1,password});
-     await tx.put('local:initialized',{schema:1});
-    });
-    return reply(200,{ok:true,initialized:true});
+    // Codes de diagnostic par étape, sans message brut, mot de passe ou secret.
+    // Les erreurs attendues de validation restent inchangées.
+    let stage='rate';
+    try{
+     await rate('bootstrap-global',10);
+     await rate('bootstrap-ip:'+hash(request.headers.get('CF-Connecting-IP') || 'local'),5);
+     stage='token';
+     const token=body.setupToken;
+     requireThat(!initialized && setupAvailable() && typeof token==='string' && token.length<=128 && equal(hash(token),hash(env.REC_BOOTSTRAP_SETUP_TOKEN)),'AUTH_FAILED');
+     stage='password';
+     const username=usernameInput(body.username),password=passwordRecord(body.password),id=randomUUID();
+     stage='storage';
+     await storage.transaction(async tx=>{
+      requireThat(!(await tx.get('local:initialized')) && (await tx.list({prefix:'local:user:'})).size===0,'AUTH_FAILED');
+      await tx.put(key('user',username),{id,username,role:'admin',active:true,version:1,password});
+      await tx.put('local:initialized',{schema:1});
+     });
+     return reply(200,{ok:true,initialized:true});
+    }catch(error){
+     if(['AUTH_FAILED','LOGIN_RATE_LIMIT','INVALID_PASSWORD','INVALID_USERNAME'].includes(error?.message))throw error;
+     fail({rate:'BOOTSTRAP_RATE_UNAVAILABLE',token:'BOOTSTRAP_TOKEN_CHECK_FAILED',password:'BOOTSTRAP_CRYPTO_UNAVAILABLE',storage:'BOOTSTRAP_STORAGE_UNAVAILABLE'}[stage]);
+    }
    }
    if(path==='/local/login'){
     requireThat(length<=4096,'INVALID_REQUEST');await prune();
@@ -114,8 +123,9 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
    }
    return reply(404,{ok:false,error:'NOT_FOUND'});
   }catch(e){
-   const allowed=['FORBIDDEN','SESSION_REQUIRED','AUTH_FAILED','LOGIN_RATE_LIMIT','INVALID_PASSWORD','INVALID_USERNAME','INVALID_REQUEST','LAST_ADMIN','PRIVATE_INITIALIZATION_REQUIRED'];
-   return reply(e.message==='LOGIN_RATE_LIMIT'?429:e.message==='AUTH_FAILED'?401:403,{ok:false,error:allowed.includes(e.message)?e.message:'REC_REQUEST_FAILED'});
+   const diagnostic=['BOOTSTRAP_RATE_UNAVAILABLE','BOOTSTRAP_TOKEN_CHECK_FAILED','BOOTSTRAP_CRYPTO_UNAVAILABLE','BOOTSTRAP_STORAGE_UNAVAILABLE'];
+   const allowed=['FORBIDDEN','SESSION_REQUIRED','AUTH_FAILED','LOGIN_RATE_LIMIT','INVALID_PASSWORD','INVALID_USERNAME','INVALID_REQUEST','LAST_ADMIN','PRIVATE_INITIALIZATION_REQUIRED',...diagnostic];
+   return reply(diagnostic.includes(e.message)?503:e.message==='LOGIN_RATE_LIMIT'?429:e.message==='AUTH_FAILED'?401:403,{ok:false,error:allowed.includes(e.message)?e.message:'REC_REQUEST_FAILED'});
   }
  };
 }

@@ -42,6 +42,24 @@ test('bootstrap iPhone refusé si jeton absent, trop faible, origine tierce ou a
  assert.equal((await post(s,'bootstrap',body)).status,429);
  assert.equal((await s.storage.list({prefix:'local:user:'})).size,0);
 });
+test('diagnostic bootstrap stable et non sensible : stockage indisponible',async()=>{
+ const s=setup();delete s.env.REC_BOOTSTRAP_ADMIN;s.env.REC_BOOTSTRAP_SETUP_TOKEN='k'.repeat(64);
+ const original=s.storage.transaction;let count=0;
+ s.storage.transaction=fn=>{count++;if(count===3)throw Error('private token / raw internal storage failure');return original(fn);};
+ const result=await post(s,'bootstrap',{setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'amine',password});
+ assert.equal(result.status,503);assert.equal(result.error,'BOOTSTRAP_STORAGE_UNAVAILABLE');
+ assert.equal(JSON.stringify(result).includes('private token'),false);
+ assert.equal(JSON.stringify(result).includes(s.env.REC_BOOTSTRAP_SETUP_TOKEN),false);
+ assert.equal(JSON.stringify(result).includes(password),false);
+ assert.equal((await s.storage.list({prefix:'local:user:'})).size,0);
+});
+test('diagnostic bootstrap stable : indisponibilité de la limitation de débit',async()=>{
+ const s=setup();delete s.env.REC_BOOTSTRAP_ADMIN;s.env.REC_BOOTSTRAP_SETUP_TOKEN='k'.repeat(64);
+ s.storage.transaction=()=>{throw Error('sensitive Cloudflare exception');};
+ const result=await post(s,'bootstrap',{setupToken:s.env.REC_BOOTSTRAP_SETUP_TOKEN,username:'amine',password});
+ assert.equal(result.status,503);assert.equal(result.error,'BOOTSTRAP_RATE_UNAVAILABLE');
+ assert.equal(JSON.stringify(result).includes('sensitive Cloudflare'),false);
+});
 test('gestion comptes, dernier admin, révocation rôle et mot de passe, lecteur interdit',async()=>{const s=setup(),admin=await login(s);assert.equal((await post(s,'users',{action:'save',username:'reader-test',role:'reader',active:true,password,currentPassword:password},admin)).ok,true);const reader=await login(s,'reader-test');assert.equal((await post(s,'users',{action:'list'},reader)).error,'FORBIDDEN');for(const action of ['v2.write','v2.simulate','finance.write','finance.configure'])assert.equal((await post(s,'api',{action},reader)).error,'FORBIDDEN');assert.equal((await post(s,'users',{action:'save',username:'reader-test',role:'manager',active:true,currentPassword:password},admin)).ok,true);assert.equal((await post(s,'api',{},reader)).error,'SESSION_REQUIRED');assert.equal((await post(s,'users',{action:'save',username:'admin-test',role:'reader',active:true,currentPassword:password},admin)).error,'LAST_ADMIN');const manager=await login(s,'reader-test');assert.equal((await post(s,'api',{action:'finance.write'},manager)).error,'REC_BACKEND_DISABLED');assert.equal((await post(s,'password',{currentPassword:password,password:'New fictitious password 2026'},manager)).ok,true);assert.equal((await post(s,'api',{},manager)).error,'SESSION_REQUIRED');});
 test('chaque action : matrice serveur et cible PROD refusée avant réseau',()=>{for(const role of ['admin','manager','reader'])for(const action of ['rec.status','rec.reference','finance.read','v2.read','rec.testTransaction.list','v2.simulate','v2.write','v2.import','finance.preview','finance.write','finance.configure','rec.testTransaction.create']){const expected=['v2.simulate','v2.write','v2.import','finance.configure','rec.testTransaction.create'].includes(action)?role==='admin':['finance.preview','finance.write'].includes(action)?role!=='reader':true;if(expected)authorized({action},{role});else assert.throws(()=>authorized({action},{role}),/FORBIDDEN/);}assert.throws(()=>authorized({action:'unknown'},{role:'admin'}),/ACTION_NOT_ALLOWED/);assert.throws(()=>backendConfig({APP_ENV:'PROD',REC_SERVER_URL:origin},{hosting:'cloudflare'}),/REC_ONLY/);assert.throws(()=>backendConfig({APP_ENV:'REC',REC_SERVER_URL:origin,REC_APPS_SCRIPT_URL:'https://script.google.com/macros/s/PROD_FICTIF/exec'},{hosting:'cloudflare'}),/WRONG_DEPLOYMENT_TARGET/);});
 test('véritable workerd / SQLite : mot de passe 600k sans OAuth, routes anciennes closes et backend OFF',async()=>{const s=setup(),w=await localWorker({cfg:{base:origin},site:new URL('../../rec-server/public',import.meta.url).pathname,productionEnv:s.env});try{const root=await w.mf.dispatchFetch(origin+'/');assert.equal(root.status,200);assert.match(await root.text(),/login-form/);const r=await w.mf.dispatchFetch(origin+'/local/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'admin-test',password})});const data=await r.json();assert.equal(r.status,200);assert.equal(data.user.role,'admin');for(const path of ['/api','/auth/start','/oauth/callback'])assert.equal((await w.mf.dispatchFetch(origin+path)).status,403);assert.equal((await w.mf.dispatchFetch(origin+'/local/session',{headers:{Cookie:r.headers.get('set-cookie').split(';')[0]}})).status,200);}finally{await w.close();}});
