@@ -6,6 +6,23 @@ export const RECOVERY=Object.freeze({
   backupTag:'2f69e4f2-0868-4cd7-acaf-d93c9ad69737',
   backupHash:'a2db8fc517ebf147536788173e471a0d73c945f2f01f50a12203c6dfbc5a5b22'
 });
+export const RECOVERY_V3=Object.freeze({
+  tag:'gha-44785870895',sourceSha:'ad5c72bf31ea822b459ef6867470e331f80a8c8f',
+  hash:'0a542c4f4953d67b27eec822628d13d1375428e9aebdc90ef3c4f579ad4d58b6',
+  backupTag:'2fabf0aa-6941-4a21-889f-a02e3e72d67c',
+  backupHash:'6fc5745fd734761513b93403982c097d554882fd53ad7137766c035d3c8fa33b'
+});
+function sameEntrypoint(before,after,expected,policy) {
+  if(canonical(before)===canonical(after))return true;
+  if(expected.tag!==RECOVERY_V3.tag || !policy.gatewayTransport || before?.length!==1 || after?.length!==1)return false;
+  const old=before[0],next=after[0];
+  return old.entryPointType==='WEB_APP' && next.entryPointType==='WEB_APP' &&
+    old.webApp?.url===next.webApp?.url &&
+    old.webApp?.entryPointConfig?.executeAs==='USER_DEPLOYING' &&
+    next.webApp?.entryPointConfig?.executeAs==='USER_DEPLOYING' &&
+    old.webApp?.entryPointConfig?.access==='MYSELF' &&
+    next.webApp?.entryPointConfig?.access==='ANYONE_ANONYMOUS';
+}
 export async function inspectPendingDeploy({api,store,policy,state,pending,expected=RECOVERY}) {
   requireThat(pending.length===1,'AMBIGUOUS_PENDING_DEPLOY');
   const record=pending[0],p=record.value;
@@ -19,14 +36,14 @@ export async function inspectPendingDeploy({api,store,policy,state,pending,expec
   requireThat(b.schema===1 && b.kind==='backup' && b.tag===expected.backupTag &&
     b.targetHash===policy.pins.scriptHash && b.sheetHash===policy.pins.sheetHash &&
     b.account===policy.email && b.headHash===expected.hash && contentHash(b.content)===expected.hash,'BACKUP_TARGET_MISMATCH');
-  privateManifest(JSON.parse(b.content.files.find(f=>f.name==='appsscript').source));
+  privateManifest(JSON.parse(b.content.files.find(f=>f.name==='appsscript').source),{gatewayTransport:policy.gatewayTransport});
   const deployments=state.deployments.filter(d=>d.deploymentConfig?.versionNumber!==undefined);
   requireThat(policy.deploymentId && deployments.length===1 && deployments[0].deploymentId===policy.deploymentId,'UNEXPECTED_EXISTING_DEPLOYMENT');
   const d=deployments[0];checkDeployment(d,policy);
   const before=p.deploymentsBefore;
   requireThat(Array.isArray(before) && before.length===1 && before[0].id===d.deploymentId &&
     before[0].scriptId===policy.scriptId && Number.isInteger(before[0].version) && before[0].version>0 &&
-    canonical(before[0].entryPoints)===canonical(d.entryPoints),'BASELINE_DEPLOYMENT_MISMATCH');
+    sameEntrypoint(before[0].entryPoints,d.entryPoints,expected,policy),'BASELINE_DEPLOYMENT_MISMATCH');
   // La sauvegarde conserve la réponse REST brute (HEAD compris), tandis que
   // deploymentsBefore ne conserve que les déploiements versionnés.
   requireThat(Array.isArray(b.deployments),'INVALID_BACKUP_DEPLOYMENTS');
@@ -43,7 +60,7 @@ export async function inspectPendingDeploy({api,store,policy,state,pending,expec
   const created=matches[0].versionNumber;
   async function versionHash(version) {
     const snapshot=await api.getContent(version);requireThat(snapshot.scriptId===policy.scriptId,'WRONG_VERSION_TARGET');
-    privateManifest(JSON.parse(snapshot.files.find(f=>f.name==='appsscript').source));return contentHash(snapshot);
+    privateManifest(JSON.parse(snapshot.files.find(f=>f.name==='appsscript').source),{gatewayTransport:policy.gatewayTransport});return contentHash(snapshot);
   }
   requireThat(await versionHash(created)===expected.hash,'CREATED_VERSION_CONTENT_CHANGED');
   const published=d.deploymentConfig.versionNumber,publishedHash=await versionHash(published);
