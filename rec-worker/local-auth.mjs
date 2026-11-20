@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {hash,random,requireThat,frontendConfig} from '../rec-server/security.mjs';
+import {hash,equal,random,requireThat,frontendConfig} from '../rec-server/security.mjs';
 import {passwordRecord,verifyPassword,usernameInput,validPasswordRecord} from './passwords.mjs';
 import {bridge,authorized} from '../rec-server/bridge.mjs';
 const roles=['admin','manager','reader'],sessionCookie='__Host-rec_session';
@@ -18,6 +18,7 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
   requireThat(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(u.id || '') && u.role==='admin' && validPasswordRecord(u.password),'PRIVATE_INITIALIZATION_REQUIRED');usernameInput(u.username);
   await storage.transaction(async tx=>{if(await tx.get('local:initialized'))return;requireThat((await tx.list({prefix:'local:user:'})).size===0,'PRIVATE_INITIALIZATION_REQUIRED');await tx.put(key('user',u.username),{id:u.id,username:u.username,role:'admin',active:true,version:1,password:u.password});await tx.put('local:initialized',{schema:1});});return true;
  }
+ const setupAvailable=()=>typeof env.REC_BOOTSTRAP_SETUP_TOKEN==='string' && /^[A-Za-z0-9_-]{43,128}$/.test(env.REC_BOOTSTRAP_SETUP_TOKEN);
  async function rate(name,limit){
   await storage.transaction(async tx=>{const k=key('rate',name),time=now();let r=await tx.get(k);if(!r || r.exp<=time)r={count:0,exp:time+900000};requireThat(r.count<limit,'LOGIN_RATE_LIMIT');await tx.put(k,{...r,count:r.count+1});});
  }
@@ -41,19 +42,35 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
   try{
    requireThat(new URL(request.url).origin===cfg.origin,'FORBIDDEN');
    const path=new URL(request.url).pathname;
-   if(!['/local/session','/local/login','/local/logout','/local/password','/local/users','/local/api'].includes(path))return reply(404,{ok:false,error:'NOT_FOUND'});
+   if(!['/local/session','/local/bootstrap','/local/login','/local/logout','/local/password','/local/users','/local/api'].includes(path))return reply(404,{ok:false,error:'NOT_FOUND'});
    if(request.method==='GET')requireThat(!request.headers.get('Sec-Fetch-Site') || request.headers.get('Sec-Fetch-Site')==='same-origin','FORBIDDEN');
    else requireThat(request.method==='POST' && request.headers.get('Origin')===cfg.origin && request.headers.get('Content-Type')?.split(';')[0]==='application/json','FORBIDDEN');
    const initialized=await initialize();
    let current=await session(request);
-   if(path==='/local/session' && request.method==='GET')return reply(200,{ok:true,user:current?safeUser(current.u):null,csrf:current?.s.csrf || null,bootstrapRequired:!initialized,backendEnabled:env.REC_BACKEND_ENABLED==='true'});
+   if(path==='/local/session' && request.method==='GET')return reply(200,{ok:true,user:current?safeUser(current.u):null,csrf:current?.s.csrf || null,bootstrapRequired:!initialized,bootstrapOnPhone:!initialized && setupAvailable(),backendEnabled:env.REC_BACKEND_ENABLED==='true'});
    requireThat(request.method==='POST','FORBIDDEN');
-   if(path!=='/local/login')requireThat(current,'SESSION_REQUIRED');
-   if(current && path!=='/local/login')requireThat(request.headers.get('X-REC-CSRF')===current.s.csrf,'FORBIDDEN');
+   if(!['/local/login','/local/bootstrap'].includes(path))requireThat(current,'SESSION_REQUIRED');
+   if(current && !['/local/login','/local/bootstrap'].includes(path))requireThat(request.headers.get('X-REC-CSRF')===current.s.csrf,'FORBIDDEN');
    const declared=Number(request.headers.get('Content-Length'));requireThat(!declared || declared<=600000,'INVALID_REQUEST');
    const chunks=[];let length=0;if(request.body)for await(const chunk of request.body){length+=chunk.length;requireThat(length<=600000,'INVALID_REQUEST');chunks.push(chunk);}
    const bytes=new Uint8Array(length);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.length;}let body;try{body=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('INVALID_REQUEST');}
    requireThat(body && typeof body==='object' && !Array.isArray(body),'INVALID_REQUEST');
+   if(path==='/local/bootstrap'){
+    requireThat(length<=4096,'INVALID_REQUEST');
+    // Le jeton temporaire est un secret Cloudflare saisi directement depuis le téléphone.
+    // Aucune création sans ce secret, ni réinitialisation après la première création.
+    await rate('bootstrap-global',10);
+    await rate('bootstrap-ip:'+hash(request.headers.get('CF-Connecting-IP') || 'local'),5);
+    const token=body.setupToken;
+    requireThat(!initialized && setupAvailable() && typeof token==='string' && token.length<=128 && equal(hash(token),hash(env.REC_BOOTSTRAP_SETUP_TOKEN)),'AUTH_FAILED');
+    const username=usernameInput(body.username),password=passwordRecord(body.password),id=randomUUID();
+    await storage.transaction(async tx=>{
+     requireThat(!(await tx.get('local:initialized')) && (await tx.list({prefix:'local:user:'})).size===0,'AUTH_FAILED');
+     await tx.put(key('user',username),{id,username,role:'admin',active:true,version:1,password});
+     await tx.put('local:initialized',{schema:1});
+    });
+    return reply(200,{ok:true,initialized:true});
+   }
    if(path==='/local/login'){
     requireThat(length<=4096,'INVALID_REQUEST');await prune();
     await rate('global',30);await rate('ip:'+hash(request.headers.get('CF-Connecting-IP') || 'local'),10);

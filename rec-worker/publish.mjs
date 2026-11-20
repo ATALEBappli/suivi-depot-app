@@ -29,7 +29,7 @@ export function checkSettings(settings,{after=false,deploymentPin=pins.deploymen
   requireThat(!seen.has(b.name),'UNEXPECTED_EXISTING_BINDING');seen.add(b.name);
   if(b.name==='ASSETS')requireThat(b.type==='assets','UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_AUTH')requireThat(b.type==='durable_object_namespace' && b.class_name==='RecAuth' && typeof b.namespace_id==='string' && (!b.script_name || b.script_name===target.worker),'WRONG_DURABLE_OBJECT');
-  else if(['REC_OAUTH_CLIENT_SECRET','REC_GATEWAY_KEY','REC_BOOTSTRAP_ADMIN'].includes(b.name))requireThat(b.type==='secret_text','UNEXPECTED_EXISTING_BINDING');
+  else if(['REC_OAUTH_CLIENT_SECRET','REC_GATEWAY_KEY','REC_BOOTSTRAP_ADMIN','REC_BOOTSTRAP_SETUP_TOKEN'].includes(b.name))requireThat(b.type==='secret_text','UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_OAUTH_CLIENT_ID')requireThat(b.type==='plain_text' && /^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(b.text || ''),'UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_APPS_SCRIPT_URL'){
    const match=b.type==='plain_text' && typeof b.text==='string' && b.text.match(/^https:\/\/script\.google\.com\/macros\/s\/([A-Za-z0-9_-]+)\/exec$/);
@@ -40,7 +40,7 @@ export function checkSettings(settings,{after=false,deploymentPin=pins.deploymen
  if(after)requireThat([...Object.keys(vars),'REC_AUTH','ASSETS'].every(name=>name==='ASSETS' || seen.has(name)),'MISSING_DEPLOYED_BINDING');
  const oauth=['REC_OAUTH_CLIENT_ID','REC_OAUTH_CLIENT_SECRET'],backend=['REC_APPS_SCRIPT_URL','REC_GATEWAY_KEY'];
  const complete=names=>{const n=names.filter(name=>seen.has(name)).length;requireThat(n===0 || n===names.length,'OAUTH_CONFIGURATION_INCOMPLETE');return n===names.length;};
- return {oauthConfigured:complete(oauth),backendConfigured:complete(backend),bootstrapConfigured:seen.has('REC_BOOTSTRAP_ADMIN')};
+ return {oauthConfigured:complete(oauth),backendConfigured:complete(backend),bootstrapConfigured:seen.has('REC_BOOTSTRAP_ADMIN'),phoneBootstrapConfigured:seen.has('REC_BOOTSTRAP_SETUP_TOKEN')};
 }
 // ScriptSetting.observability et tail_consumers sont optionnels et nullables.
 // Absence = fonctionnalité non configurée ; un objet présent doit rester explicite.
@@ -87,7 +87,7 @@ export async function publish(directory,{env=process.env,fetcher=fetch,deploy}={
  await deploy(resolve(directory,'wrangler.jsonc'));
  verifyRelease(directory,{sourceSha:env.GITHUB_SHA,expectedHash:receipt.sha256});
  const post=checkSettings(await cloudflareRead(workerPath+'/settings',token,fetcher,'POST_WORKER_SETTINGS'),{after:true});
- requireThat(pre.oauthConfigured===post.oauthConfigured && pre.backendConfigured===post.backendConfigured && pre.bootstrapConfigured===post.bootstrapConfigured,'OAUTH_CONFIGURATION_CHANGED');
+ requireThat(pre.oauthConfigured===post.oauthConfigured && pre.backendConfigured===post.backendConfigured && pre.bootstrapConfigured===post.bootstrapConfigured && pre.phoneBootstrapConfigured===post.phoneBootstrapConfigured,'OAUTH_CONFIGURATION_CHANGED');
  const logs=await cloudflareRead(workerPath+'/script-settings',token,fetcher,'POST_LOG_SETTINGS');
  checkLogSettings(logs);
  return verifyPublic(directory,{fetcher,oauthConfigured:post.oauthConfigured});
