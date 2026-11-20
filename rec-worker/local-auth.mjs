@@ -67,7 +67,7 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
      const token=body.setupToken;
      requireThat(!initialized && setupAvailable() && typeof token==='string' && token.length<=128 && equal(hash(token),hash(env.REC_BOOTSTRAP_SETUP_TOKEN)),'AUTH_FAILED');
      stage='password';
-     const username=usernameInput(body.username),password=passwordRecord(body.password),id=randomUUID();
+     const username=usernameInput(body.username),password=await passwordRecord(body.password),id=randomUUID();
      stage='storage';
      await storage.transaction(async tx=>{
       requireThat(!(await tx.get('local:initialized')) && (await tx.list({prefix:'local:user:'})).size===0,'AUTH_FAILED');
@@ -86,7 +86,7 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
     const username=typeof body.username==='string'?body.username.toLowerCase():'';
     await rate('name:'+hash(username),5);
     const u=/^[a-z0-9][a-z0-9._-]{2,63}$/.test(username)?await storage.get(key('user',username)):undefined;
-    const valid=verifyPassword(body.password,u?.password);requireThat(initialized && valid && u?.active,'AUTH_FAILED');
+    const valid=await verifyPassword(body.password,u?.password);requireThat(initialized && valid && u?.active,'AUTH_FAILED');
     const token=random(),csrf=random();requireThat((await storage.list({prefix:'local:session:'})).size<500,'LOGIN_RATE_LIMIT');
     await storage.put(key('session',token),{userId:u.id,username:u.username,version:u.version,csrf,exp:now()+900000});
     if(storage.setAlarm && !(await storage.getAlarm()))await storage.setAlarm(now()+60000);
@@ -98,7 +98,7 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
    if(path==='/local/logout'){await storage.delete(key('session',token));return reply(200,{ok:true},{'Set-Cookie':cookie('',0)});}
    if(path==='/local/password'){
     await rate('reauth:'+u.id,5);
-    requireThat(length<=4096 && verifyPassword(body.currentPassword,u.password),'AUTH_FAILED');const password=passwordRecord(body.password);
+    requireThat(length<=4096 && await verifyPassword(body.currentPassword,u.password),'AUTH_FAILED');const password=await passwordRecord(body.password);
     await storage.transaction(async tx=>{const fresh=await tx.get(key('user',u.username));requireThat(fresh.version===u.version,'SESSION_REQUIRED');await tx.put(key('user',u.username),{...fresh,password,version:fresh.version+1});});
     return reply(200,{ok:true},{'Set-Cookie':cookie('',0)});
    }
@@ -106,9 +106,9 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
     requireThat(u.role==='admin','FORBIDDEN');
     if(body.action==='list')return reply(200,{ok:true,users:[...(await storage.list({prefix:'local:user:'})).values()].map(safeUser)});
     await rate('reauth:'+u.id,5);
-    requireThat(body.action==='save' && length<=8192 && verifyPassword(body.currentPassword,u.password),'AUTH_FAILED');
+    requireThat(body.action==='save' && length<=8192 && await verifyPassword(body.currentPassword,u.password),'AUTH_FAILED');
     const name=usernameInput(body.username);requireThat(roles.includes(body.role) && typeof body.active==='boolean','INVALID_REQUEST');
-    const password=body.password?passwordRecord(body.password):null;
+    const password=body.password?await passwordRecord(body.password):null;
     await storage.transaction(async tx=>{
      const actor=await tx.get(key('user',u.username));requireThat(actor.active && actor.version===u.version && actor.role==='admin','SESSION_REQUIRED');
      const previous=await tx.get(key('user',name)),users=[...(await tx.list({prefix:'local:user:'})).values()];
