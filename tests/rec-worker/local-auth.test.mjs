@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,pbkdf2Sync} from 'node:crypto';
 import {localApplication,cleanupLocal} from '../../rec-worker/local-auth.mjs';
-import {passwordRecord,verifyPassword,passwordPolicy} from '../../rec-worker/passwords.mjs';
+import {passwordRecord,verifyPassword,passwordPolicy,derivePasswordHmac} from '../../rec-worker/passwords.mjs';
 import {authorized} from '../../rec-server/bridge.mjs';
 import {backendConfig} from '../../rec-server/security.mjs';
 import {localWorker} from './harness.mjs';
@@ -12,6 +12,11 @@ function setup(){let time=Date.now();const storage=memory(),env={APP_ENV:'REC',R
 async function post(s,path,body={},session,patch={}){const r=await s.handler(new Request(origin+'/local/'+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...(session?{Cookie:session.cookie,'X-REC-CSRF':session.csrf}:{}),...patch},body:JSON.stringify(body)}));return {status:r.status,...await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};}
 async function login(s,username='admin-test',pass=password){return post(s,'login',{username,password:pass});}
 test('PBKDF2 WebCrypto 600k, sels uniques, entrée stricte, compatibilité Node et aucun clair',async()=>{const b=await passwordRecord(password);assert.equal(passwordPolicy.iterations,600000);assert.notEqual(b.salt,record.salt);assert.equal(await verifyPassword(password,b),true);assert.equal(await verifyPassword('incorrect',b),false);assert.equal(await verifyPassword(password,null),false);assert.equal(JSON.stringify(b).includes(password),false);await assert.rejects(passwordRecord('short'),/INVALID_PASSWORD/);assert.equal(b.hash,pbkdf2Sync(password,Buffer.from(b.salt,'hex'),600000,32,'sha256').toString('hex'));});
+test('repli Cloudflare PBKDF2 au-delà de 100k : HMAC natif identique au dérivé existant',()=>{
+ const salt=Buffer.from(record.salt,'hex');
+ assert.equal(derivePasswordHmac(password,salt).toString('hex'),record.hash);
+ assert.notEqual(derivePasswordHmac('Fictitious invalid password',salt).toString('hex'),record.hash);
+});
 test('initialisation privée, anonymat, session HttpOnly, CSRF, backend désactivé, expiration et logout',async()=>{const s=setup();const anonymous=await post(s,'api',{action:'rec.status'});assert.equal(anonymous.error,'SESSION_REQUIRED');const l=await login(s);assert.equal(l.ok,true);assert.match(l.headers.get('set-cookie'),/Secure; HttpOnly; SameSite=Strict/);assert.equal(l.user.role,'admin');assert.equal(JSON.stringify(l).includes(record.hash),false);assert.equal((await post(s,'api',{action:'rec.status'},l)).error,'REC_BACKEND_DISABLED');assert.equal((await post(s,'api',{action:'rec.status'},l,{'X-REC-CSRF':'bad'})).error,'FORBIDDEN');assert.equal((await post(s,'api',{action:'rec.status'},l,{Origin:'https://evil.invalid'})).error,'FORBIDDEN');assert.equal((await post(s,'api',{action:'rec.localStatus'},l)).backendEnabled,false);await post(s,'logout',{},l);assert.equal((await post(s,'api',{},l)).error,'SESSION_REQUIRED');const next=await login(s);s.advance();assert.equal((await post(s,'api',{},next)).error,'SESSION_REQUIRED');await cleanupLocal(s.storage,()=>Date.now()+1000000);assert.equal((await s.storage.list({prefix:'local:session:'})).size,0);assert.equal(JSON.stringify([...s.storage.values]).includes(password),false);});
 test('échecs génériques et limite par identifiant ; aucune inscription ni admin par défaut',async()=>{const s=setup();for(let i=0;i<5;i++)assert.equal((await login(s,'absent','incorrect')).error,'AUTH_FAILED');assert.equal((await login(s,'absent')).status,429);s.advance();assert.equal((await login(s,'absent')).status,401);const e={...s.env};delete e.REC_BOOTSTRAP_ADMIN;const handler=localApplication(e,memory());const state=await (await handler(new Request(origin+'/local/session'))).json();assert.equal(state.bootstrapRequired,true);assert.equal(state.user,null);assert.equal((await handler(new Request(origin+'/local/signup'))).status,404);});
 test('initialisation iPhone à jeton privé Cloudflare : usage unique, serveur uniquement, aucun compte Google',async()=>{
