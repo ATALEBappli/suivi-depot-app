@@ -6,7 +6,20 @@ import {passwordRecord,verifyPassword,passwordPolicy,derivePasswordHmac} from '.
 import {authorized} from '../../rec-server/bridge.mjs';
 import {backendConfig} from '../../rec-server/security.mjs';
 import {localWorker} from './harness.mjs';
+import {routes} from '../../rec-worker/routes.mjs';
 const origin='https://rec-fictif.compte-fictif.workers.dev',password='Fictitious password test 2026!',record=await passwordRecord(password);
+test('edge REC transmet toujours son propre état backend au DO, jamais celui du client',async()=>{
+ const observed=[];
+ const env={REC_AUTH_MODE:'local',REC_BACKEND_ENABLED:'true',REC_AUTH:{idFromName:()=> 'rec-auth-v1',get:()=>({fetch:async r=>{
+  observed.push(r.headers.get('X-REC-Edge-Backend'));return Response.json({ok:true});
+ }})}};
+ const handler=routes({origin,base:origin},env,{files:[]});
+ await handler(new Request(origin+'/local/session',{headers:{'X-REC-Edge-Backend':'false'}}));
+ assert.deepEqual(observed,['true']);
+ env.REC_BACKEND_ENABLED='false';
+ await handler(new Request(origin+'/local/session',{headers:{'X-REC-Edge-Backend':'true'}}));
+ assert.deepEqual(observed,['true','false']);
+});
 export function memory(){const values=new Map();let chain=Promise.resolve();const tx={get:async k=>structuredClone(values.get(k)),put:async(k,v)=>values.set(k,structuredClone(v)),delete:async k=>values.delete(k),list:async({prefix})=>new Map([...values].filter(([k])=>k.startsWith(prefix)).map(([k,v])=>[k,structuredClone(v)]))};return {...tx,values,transaction:fn=>{const r=chain.then(()=>fn(tx));chain=r.catch(()=>{});return r;},getAlarm:async()=>null,setAlarm:async()=>{}};}
 function setup(){let time=Date.now();const storage=memory(),env={APP_ENV:'REC',REC_SERVER_URL:origin,REC_BACKEND_ENABLED:'false',REC_AUTH_MODE:'local',REC_BOOTSTRAP_ADMIN:JSON.stringify({id:randomUUID(),username:'admin-test',role:'admin',password:record})},handler=localApplication(env,storage,{now:()=>time});return {storage,env,handler,advance:()=>{time+=900001;}};}
 async function post(s,path,body={},session,patch={}){const r=await s.handler(new Request(origin+'/local/'+path,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',...(session?{Cookie:session.cookie,'X-REC-CSRF':session.csrf}:{}),...patch},body:JSON.stringify(body)}));return {status:r.status,...await r.json(),cookie:r.headers.get('set-cookie')?.split(';')[0],headers:r.headers};}
