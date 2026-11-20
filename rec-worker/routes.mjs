@@ -12,7 +12,13 @@ export function routes(cfg,env,manifest,{beforeAuth=()=>{}}={}){
   const path=url.pathname==='/'?(env.REC_AUTH_MODE==='local'?'/local/index.html':'/index.html'):url.pathname;
   if(url.pathname.startsWith('/local/')){
    if(env.REC_AUTH_MODE!=='local')return failure(403);
-   if(!assets.has(path))return env.REC_AUTH.get(env.REC_AUTH.idFromName('rec-auth-v1')).fetch(request);
+   if(!assets.has(path)){
+    // La version de l'objet durable peut conserver l'ancien env en mémoire.
+    // Transmettre la valeur de la version Worker active, jamais l'en-tête client.
+    const forwarded=new Request(request);
+    forwarded.headers.set('X-REC-Edge-Backend',env.REC_BACKEND_ENABLED==='true'?'true':'false');
+    return env.REC_AUTH.get(env.REC_AUTH.idFromName('rec-auth-v1')).fetch(forwarded);
+   }
   }
   if(request.method==='GET' && assets.has(path)){
    const response=await env.ASSETS.fetch(new Request(cfg.base+path)),bytes=await response.arrayBuffer();
