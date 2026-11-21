@@ -10,11 +10,12 @@ export function bridge(config,{fetcher=fetch,now=Date.now,nonce=random}={}) {
  async function signed(body,user) {
   const id=nonce(),payload=JSON.stringify({version:user.authMode==='local'?2:1,timestamp:now(),nonce:id,actor:user.authMode==='local'?{id:user.id,role:user.role,authVersion:user.version}:{email:user.email,sub:user.sub},request:body});
   let signedPayload;try{signedPayload=mac(payload,config.key);}catch{throw Error('REC_GATEWAY_SIGNING_FAILED');}
-  let r;try{r=await fetcher(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rec.gateway',payload,mac:signedPayload}),redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_FETCH_FAILED');}
+  // Un POST a peut-être été exécuté avant un échec réseau : aucun nouvel essai automatique.
+  let r;try{r=await fetcher(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rec.gateway',payload,mac:signedPayload}),redirect:'manual',signal:AbortSignal.timeout(45000)});}catch{throw Error('REC_GATEWAY_POST_FAILED');}
   if([302,303].includes(r.status)){
    let location;try{location=new URL(r.headers.get('location'));}catch{throw Error('REC_GATEWAY_REDIRECT_INVALID');}
    requireThat(location.protocol==='https:' && location.hostname==='script.googleusercontent.com' && !location.username && !location.password && !location.port,'GOOGLE_REDIRECT_REFUSED');
-   try{r=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_FETCH_FAILED');}
+   try{r=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_REDIRECT_FETCH_FAILED');}
   }
   requireThat(r.ok,'REC_CONNECTION_FAILED');let envelope;
   try{envelope=await r.json();}catch{throw Error('REC_GATEWAY_INVALID_JSON');}
