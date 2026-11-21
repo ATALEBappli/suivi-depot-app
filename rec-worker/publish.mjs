@@ -26,6 +26,7 @@ export function cloudflareReadErrorCode(error){return /^CLOUDFLARE_READ_(PRE_WOR
 export function checkSettings(settings,{after=false,deploymentPin=pins.deployment}={}){
  const vars=releaseVars();const seen=new Set();
  for(const b of settings.bindings || []){
+  try{
   requireThat(!seen.has(b.name),'UNEXPECTED_EXISTING_BINDING');seen.add(b.name);
   if(b.name==='ASSETS')requireThat(b.type==='assets','UNEXPECTED_EXISTING_BINDING');
   else if(b.name==='REC_AUTH')requireThat(b.type==='durable_object_namespace' && b.class_name==='RecAuth' && typeof b.namespace_id==='string' && (!b.script_name || b.script_name===target.worker),'WRONG_DURABLE_OBJECT');
@@ -36,6 +37,12 @@ export function checkSettings(settings,{after=false,deploymentPin=pins.deploymen
    requireThat(match && hex(match[1])===deploymentPin,'UNEXPECTED_EXISTING_BINDING');
   }
   else requireThat(b.type==='plain_text' && Object.hasOwn(vars,b.name) && b.text===vars[b.name],'UNEXPECTED_EXISTING_BINDING');
+  }catch(error){
+   if(!['UNEXPECTED_EXISTING_BINDING','WRONG_DURABLE_OBJECT'].includes(error?.message))throw error;
+   const names=new Set([...Object.keys(vars),'ASSETS','REC_AUTH','REC_OAUTH_CLIENT_ID','REC_OAUTH_CLIENT_SECRET','REC_APPS_SCRIPT_URL','REC_GATEWAY_KEY','REC_BOOTSTRAP_ADMIN','REC_BOOTSTRAP_SETUP_TOKEN']);
+   const name=names.has(b.name)?b.name:'UNKNOWN_NAME';
+   throw Error('UNEXPECTED_EXISTING_BINDING_'+name);
+  }
  }
  // REC doit déjà être actif AVANT publication ; ce workflow n'active jamais le backend.
  requireThat(seen.has('REC_BACKEND_ENABLED'),'REC_BACKEND_NOT_ACTIVE');
