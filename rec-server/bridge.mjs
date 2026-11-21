@@ -15,7 +15,19 @@ export function bridge(config,{fetcher=fetch,now=Date.now,nonce=random}={}) {
   if([302,303].includes(r.status)){
    let location;try{location=new URL(r.headers.get('location'));}catch{throw Error('REC_GATEWAY_REDIRECT_INVALID');}
    requireThat(location.protocol==='https:' && location.hostname==='script.googleusercontent.com' && !location.username && !location.password && !location.port,'GOOGLE_REDIRECT_REFUSED');
-   try{r=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_REDIRECT_FETCH_FAILED');}
+   // Seul le GET de restitution est réessayé : jamais le POST susceptible d'écrire.
+   let received=false;
+   for(let attempt=0;attempt<2 && !received;attempt++){
+    if(attempt)await new Promise(resolve=>setTimeout(resolve,350));
+    try{
+     const answer=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});
+     // Le service Google a déjà exécuté doPost ; certaines réponses ContentService
+     // échouent momentanément en 404/502/503/504 à la première lecture.
+     if([404,502,503,504].includes(answer.status) && attempt===0)continue;
+     r=answer;received=true;
+    }catch{if(attempt===1)throw Error('REC_GATEWAY_REDIRECT_FETCH_FAILED');}
+   }
+   requireThat(received,'REC_GATEWAY_REDIRECT_FETCH_FAILED');
   }
   requireThat(r.ok,'REC_CONNECTION_FAILED');let envelope;
   try{envelope=await r.json();}catch{throw Error('REC_GATEWAY_INVALID_JSON');}
