@@ -9,14 +9,19 @@ export function authorized(body,user){
 export function bridge(config,{fetcher=fetch,now=Date.now,nonce=random}={}) {
  async function signed(body,user) {
   const id=nonce(),payload=JSON.stringify({version:user.authMode==='local'?2:1,timestamp:now(),nonce:id,actor:user.authMode==='local'?{id:user.id,role:user.role,authVersion:user.version}:{email:user.email,sub:user.sub},request:body});
-  let r=await fetcher(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rec.gateway',payload,mac:mac(payload,config.key)}),redirect:'manual',signal:AbortSignal.timeout(20000)});
+  let signedPayload;try{signedPayload=mac(payload,config.key);}catch{throw Error('REC_GATEWAY_SIGNING_FAILED');}
+  let r;try{r=await fetcher(config.endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'rec.gateway',payload,mac:signedPayload}),redirect:'manual',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_FETCH_FAILED');}
   if([302,303].includes(r.status)){
-   const location=new URL(r.headers.get('location'));requireThat(location.protocol==='https:' && location.hostname==='script.googleusercontent.com' && !location.username && !location.password && !location.port,'GOOGLE_REDIRECT_REFUSED');
-   r=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});
+   let location;try{location=new URL(r.headers.get('location'));}catch{throw Error('REC_GATEWAY_REDIRECT_INVALID');}
+   requireThat(location.protocol==='https:' && location.hostname==='script.googleusercontent.com' && !location.username && !location.password && !location.port,'GOOGLE_REDIRECT_REFUSED');
+   try{r=await fetcher(location.href,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000)});}catch{throw Error('REC_GATEWAY_FETCH_FAILED');}
   }
-  requireThat(r.ok,'REC_CONNECTION_FAILED');const envelope=await r.json();
+  requireThat(r.ok,'REC_CONNECTION_FAILED');let envelope;
+  try{envelope=await r.json();}catch{throw Error('REC_GATEWAY_INVALID_JSON');}
+  requireThat(envelope && typeof envelope==='object','REC_GATEWAY_INVALID_ENVELOPE');
   requireThat(typeof envelope.payload==='string' && envelope.payload.length<3000000 && equal(envelope.mac,mac(envelope.payload,config.key)),'REC_RESPONSE_NOT_AUTHENTICATED');
-  const result=JSON.parse(envelope.payload);requireThat(result.nonce===id,'REC_RESPONSE_REPLAY');return result.response;
+  let result;try{result=JSON.parse(envelope.payload);}catch{throw Error('REC_GATEWAY_INVALID_ENVELOPE');}
+  requireThat(result && result.nonce===id,'REC_RESPONSE_REPLAY');return result.response;
  }
  return async(body,user)=>{
   authorized(body,user);
