@@ -94,3 +94,19 @@ test('véritable workerd / SQLite : premier administrateur créé depuis Safari 
  }finally{await w.close();}
 });
 test('révocation pendant la lecture du corps : aucun appel métier autorisé avec un rôle périmé',async()=>{const s=setup(),l=await login(s);const body={async *[Symbol.asyncIterator](){for(const[k,v]of s.storage.values)if(k.startsWith('local:user:'))s.storage.values.set(k,{...v,version:v.version+1,role:'reader'});yield new TextEncoder().encode(JSON.stringify({action:'rec.localStatus'}));}};const r=await s.handler({url:origin+'/local/api',method:'POST',headers:new Headers({Origin:origin,'Content-Type':'application/json',Cookie:l.cookie,'X-REC-CSRF':l.csrf}),body});assert.equal((await r.json()).error,'SESSION_REQUIRED');});
+test('diagnostic du pont REC : classes non sensibles sans divulgation des erreurs internes',async()=>{
+ const s=setup(),session=await login(s);s.env.REC_BACKEND_ENABLED='true';
+ // L'URL et la clé sont fictives : le pont est injecté et aucun réseau n'est appelé.
+ s.env.REC_GATEWAY_KEY='a'.repeat(64);
+ s.env.REC_APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbwWb1T3lPQhsa2mflZVhvdhF04Bic5X5wGoQhmwsTHa4RkqZgcqYm8R5lGrGtqVBOk1hA/exec';
+ const cases={REC_CONNECTION_FAILED:'REC_GATEWAY_CONNECTION_FAILED',GOOGLE_REDIRECT_REFUSED:'REC_GATEWAY_REDIRECT_REFUSED',REC_RESPONSE_NOT_AUTHENTICATED:'REC_GATEWAY_SIGNATURE_INVALID',REC_RESPONSE_REPLAY:'REC_GATEWAY_NONCE_INVALID',REC_TARGET_NOT_CONFIRMED:'REC_GATEWAY_TARGET_INVALID','sensitive raw backend failure':'REC_GATEWAY_UNAVAILABLE'};
+ for(const[source,expected]of Object.entries(cases)){
+  s.handler=localApplication(s.env,s.storage,{call:async()=>{throw Error(source);}});
+  const result=await post(s,'api',{action:'rec.status'},session);
+  assert.equal(result.status,503);assert.equal(result.error,expected);
+  assert.equal(JSON.stringify(result).includes('sensitive'),false);
+ }
+ delete s.env.REC_GATEWAY_KEY;
+ s.handler=localApplication(s.env,s.storage,{call:async()=>{throw Error('should not call');}});
+ assert.equal((await post(s,'api',{action:'rec.status'},session)).error,'REC_BACKEND_CONFIGURATION_INVALID');
+});

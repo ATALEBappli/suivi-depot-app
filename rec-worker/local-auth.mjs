@@ -34,8 +34,14 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
   authorized(body,u);
   if(env.REC_BACKEND_ENABLED!=='true')return {ok:false,error:'REC_BACKEND_DISABLED'};
   // Ces propriétés sont vérifiées avant la première requête signée, sans dépendre d'OAuth.
-  const {backendConfig}=await import('../rec-server/security.mjs');const bc=backendConfig(env,{hosting:'cloudflare'});
-  return (call || bridge(bc))(body,{...safeUser(u),authMode:'local'});
+  let bc;
+  try{const {backendConfig}=await import('../rec-server/security.mjs');bc=backendConfig(env,{hosting:'cloudflare'});}
+  catch{fail('REC_BACKEND_CONFIGURATION_INVALID');}
+  try{return await (call || bridge(bc))(body,{...safeUser(u),authMode:'local'});}
+  catch(error){
+   const codes={REC_CONNECTION_FAILED:'REC_GATEWAY_CONNECTION_FAILED',GOOGLE_REDIRECT_REFUSED:'REC_GATEWAY_REDIRECT_REFUSED',REC_RESPONSE_NOT_AUTHENTICATED:'REC_GATEWAY_SIGNATURE_INVALID',REC_RESPONSE_REPLAY:'REC_GATEWAY_NONCE_INVALID',REC_TARGET_NOT_CONFIRMED:'REC_GATEWAY_TARGET_INVALID'};
+   fail(codes[error?.message] || 'REC_GATEWAY_UNAVAILABLE');
+  }
  }
  return async request=>{
   const reply=(status,data,extra={})=>Response.json(data,{status,headers:{...headers,...extra}});
@@ -124,8 +130,9 @@ export function localApplication(env,storage,{now=Date.now,call}={}){
    return reply(404,{ok:false,error:'NOT_FOUND'});
   }catch(e){
    const diagnostic=['BOOTSTRAP_RATE_UNAVAILABLE','BOOTSTRAP_TOKEN_CHECK_FAILED','BOOTSTRAP_CRYPTO_UNAVAILABLE','BOOTSTRAP_STORAGE_UNAVAILABLE'];
-   const allowed=['FORBIDDEN','SESSION_REQUIRED','AUTH_FAILED','LOGIN_RATE_LIMIT','INVALID_PASSWORD','INVALID_USERNAME','INVALID_REQUEST','LAST_ADMIN','PRIVATE_INITIALIZATION_REQUIRED',...diagnostic];
-   return reply(diagnostic.includes(e.message)?503:e.message==='LOGIN_RATE_LIMIT'?429:e.message==='AUTH_FAILED'?401:403,{ok:false,error:allowed.includes(e.message)?e.message:'REC_REQUEST_FAILED'});
+   const gateway=['REC_BACKEND_CONFIGURATION_INVALID','REC_GATEWAY_CONNECTION_FAILED','REC_GATEWAY_REDIRECT_REFUSED','REC_GATEWAY_SIGNATURE_INVALID','REC_GATEWAY_NONCE_INVALID','REC_GATEWAY_TARGET_INVALID','REC_GATEWAY_UNAVAILABLE'];
+   const allowed=['FORBIDDEN','SESSION_REQUIRED','AUTH_FAILED','LOGIN_RATE_LIMIT','INVALID_PASSWORD','INVALID_USERNAME','INVALID_REQUEST','LAST_ADMIN','PRIVATE_INITIALIZATION_REQUIRED',...diagnostic,...gateway];
+   return reply([...diagnostic,...gateway].includes(e.message)?503:e.message==='LOGIN_RATE_LIMIT'?429:e.message==='AUTH_FAILED'?401:403,{ok:false,error:allowed.includes(e.message)?e.message:'REC_REQUEST_FAILED'});
   }
  };
 }
