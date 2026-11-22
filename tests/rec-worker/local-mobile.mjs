@@ -32,6 +32,11 @@ try{for(const width of [390,320]){
  assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
  await page.getByRole('button',{name:'Paramétrage',exact:true}).click();await page.getByRole('heading',{name:'Utilisateurs',exact:true}).waitFor();
  business=true;await page.reload();await page.locator('table').first().waitFor();assert.match(await page.locator('#identity').textContent(),/admin-mobile/);
+ await page.getByRole('button',{name:'Paramétrage',exact:true}).click();
+ await page.getByRole('heading',{name:'Liste actuelle des locataires',exact:true}).waitFor();
+ await page.getByText('12 logement(s) et locataire(s)',{exact:true}).waitFor();
+ assert.equal(await page.locator('.settings-panel[data-panel="housing"] .housing-current tbody tr').count(),12);
+ assert.match(await page.locator('.housing-current').textContent(),/FICTIF 1/);
  await page.getByRole('button',{name:'Saisie',exact:true}).click();await page.locator('[name=activity]').waitFor();assert.equal(await page.locator('[name=activity] option').count(),4);await page.locator('[name=operationDate]').fill('2026-11-20');await page.locator('[name=period]').fill('2026-11');await page.locator('[name=amount]').fill('18000');await page.getByRole('button',{name:'Prévisualiser',exact:true}).click();await page.getByRole('heading',{name:'Prévisualisation',exact:false}).waitFor();assert.match(await page.locator('#view').textContent(),/FICTIF 1/);await page.getByRole('button',{name:'Confirmer l’enregistrement de TEST',exact:true}).click();await page.getByText('Opération de test enregistrée',{exact:false}).waitFor();
  await page.getByRole('button',{name:'Synthèse',exact:true}).click();await page.getByText('Entrées :',{exact:false}).waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
  await page.getByRole('button',{name:'Déconnexion',exact:true}).click();await page.locator('#login').waitFor({state:'visible'});await context.close();business=false;console.log('Mobile Chromium '+width+' px : connexion SQLite, backend OFF, formulaire, aperçu, journal simulé, synthèse, déconnexion OK.');

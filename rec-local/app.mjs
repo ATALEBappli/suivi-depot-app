@@ -36,6 +36,15 @@ function settings(){
  node('h3','Logements, locataires, locations et cautions',housing);
  if(!enabled)node('p',messages.REC_BACKEND_DISABLED,housing);
  else{
+  const current=node('section',null,housing,{class:'housing-current'});
+  node('h3','Liste actuelle des locataires',current);
+  node('p','Logements importés depuis la configuration REC. Liste en lecture seule ; le référentiel V2 ci-dessous est distinct.',current);
+  run(async()=>{
+   const result=await api({action:'rec.reference'});
+   const units=Array.isArray(result.units)?result.units:[];
+   node('p',`${units.length} logement(s) et locataire(s)`,current);
+   table(current,['Appartement','Type','Locataire','Loyer mensuel (DA)'],units.map(u=>[u.num,u.type,u.locataire,u.loyer]));
+  });
   const frame=node('iframe',null,housing,{src:'/referentiel/index.html',title:'Référentiel V2'});
   frame.addEventListener('load',()=>{frame.contentWindow.recReferenceRequest=async body=>api(body);});
   opened=true;
