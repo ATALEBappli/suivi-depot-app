@@ -1,4 +1,20 @@
 let user=null,csrf=null,enabled=false,reference=[],finance=null;
+let referenceFrameObserver=null;
+function disconnectReferenceFrame(){referenceFrameObserver?.disconnect();referenceFrameObserver=null;}
+function expandReferenceFrame(frame){
+ const doc=frame.contentDocument;
+ if(!doc?.body)return;
+ disconnectReferenceFrame();
+ const update=()=>{
+  if(!frame.isConnected)return;
+  const height=Math.ceil(Math.max(doc.body.scrollHeight,doc.documentElement.scrollHeight));
+  if(height>0 && frame.style.height!==height+'px')frame.style.height=height+'px';
+ };
+ const observer=new ResizeObserver(update);
+ referenceFrameObserver=observer;
+ observer.observe(doc.body);observer.observe(doc.documentElement);
+ update();
+}
 const $=id=>document.getElementById(id),view=$('view');
 const labels={admin:'Administrateur',manager:'Gestionnaire',reader:'Lecteur'};
 const messages={AUTH_FAILED:'Identifiant ou mot de passe incorrect.',LOGIN_RATE_LIMIT:'Trop de tentatives. Réessayez après 15 minutes.',SESSION_REQUIRED:'Session expirée ou révoquée. Reconnectez-vous.',REC_BACKEND_DISABLED:'Le stockage REC est désactivé. Aucune donnée Google n’est accessible.',PRIVATE_INITIALIZATION_REQUIRED:'Initialisation privée requise.',FORBIDDEN:'Action non autorisée.',BOOTSTRAP_RATE_UNAVAILABLE:'Initialisation REC indisponible (limitation des tentatives). Aucun compte créé.',BOOTSTRAP_TOKEN_CHECK_FAILED:'Initialisation REC indisponible (contrôle privé). Aucun compte créé.',BOOTSTRAP_CRYPTO_UNAVAILABLE:'Initialisation REC indisponible (calcul du mot de passe). Aucun compte créé.',BOOTSTRAP_STORAGE_UNAVAILABLE:'Initialisation REC indisponible (stockage du compte). Vérifiez l’état avant toute nouvelle tentative.',REC_BACKEND_CONFIGURATION_INVALID:'Configuration de connexion REC incomplète. Code REC_BACKEND_CONFIGURATION_INVALID.',REC_GATEWAY_CONNECTION_FAILED:'Connexion Apps Script refusée. Code REC_GATEWAY_CONNECTION_FAILED.',REC_GATEWAY_REDIRECT_REFUSED:'Redirection Apps Script inattendue. Code REC_GATEWAY_REDIRECT_REFUSED.',REC_GATEWAY_SIGNATURE_INVALID:'Réponse Apps Script non authentifiée. Code REC_GATEWAY_SIGNATURE_INVALID.',REC_GATEWAY_NONCE_INVALID:'Réponse Apps Script non correspondante. Code REC_GATEWAY_NONCE_INVALID.',REC_GATEWAY_TARGET_INVALID:'Réponse Apps Script ou environnement REC non conforme. Code REC_GATEWAY_TARGET_INVALID.',REC_GATEWAY_UNAVAILABLE:'Connexion au stockage REC indisponible. Code REC_GATEWAY_UNAVAILABLE.',REC_REQUEST_FAILED:'La requête REC a échoué. Aucun résultat n’est présumé enregistré.'};
@@ -12,7 +28,7 @@ async function request(path,body){const r=await fetch('/local/'+path,{method:bod
 const api=body=>request('api',body);
 async function run(fn){try{notice();await fn();}catch(e){notice(e.message || 'Connexion indisponible.');}}
 function formSubmit(form,fn){form.addEventListener('submit',e=>{e.preventDefault();const button=form.querySelector('button[type="submit"]') || form.querySelector('button');if(button)button.disabled=true;run(async()=>{try{await fn();}finally{if(button)button.disabled=false;}});});}
-function render(){ $('login').hidden=!!user;$('workspace').hidden=!user;if(!user){view.replaceChildren();reference=[];finance=null;csrf=null;$('identity').textContent='';return;} $('bootstrap').hidden=true;$('identity').textContent=user.username+' — '+labels[user.role];for(const b of $('nav').querySelectorAll('[data-view]'))b.hidden=b.dataset.view==='entry'?user.role==='reader':b.dataset.view==='settings'?user.role!=='admin':false;show('summary');}
+function render(){ $('login').hidden=!!user;$('workspace').hidden=!user;if(!user){disconnectReferenceFrame();view.replaceChildren();reference=[];finance=null;csrf=null;$('identity').textContent='';return;} $('bootstrap').hidden=true;$('identity').textContent=user.username+' — '+labels[user.role];for(const b of $('nav').querySelectorAll('[data-view]'))b.hidden=b.dataset.view==='entry'?user.role==='reader':b.dataset.view==='settings'?user.role!=='admin':false;show('summary');}
 async function load(){if(!enabled)throw Error(messages.REC_BACKEND_DISABLED);const [r,f]=await Promise.all([api({action:'rec.reference'}),api({action:'finance.read'})]);reference=r.units;finance=f;}
 function table(parent,head,rows){const wrap=node('div',null,parent,{class:'scroll'}),t=node('table',null,wrap),h=node('tr',null,node('thead',null,t));head.forEach(x=>node('th',x,h));const b=node('tbody',null,t);rows.forEach(row=>{const tr=node('tr',null,b);row.forEach(x=>node('td',String(x ?? ''),tr));});}
 function summary(){node('h2','Synthèse REC',view);node('p','Cette synthèse contient uniquement le nouveau journal des opérations de test REC. Les transactions historiques restent distinctes.',view);if(!enabled){node('p',messages.REC_BACKEND_DISABLED,view);return;}run(async()=>{await load();const incoming=finance.transactions.filter(t=>t.direction==='in').reduce((s,t)=>s+Math.round(t.amount*100),0)/100,outgoing=finance.transactions.filter(t=>t.direction==='out').reduce((s,t)=>s+Math.round(t.amount*100),0)/100;node('p',`Entrées : ${incoming} DA · Sorties : ${outgoing} DA · Solde de test : ${incoming-outgoing} DA`,view);table(view,['Date','Activité','Catégorie','Montant DA','Sens'],finance.transactions.map(t=>[t.operationDate,t.activity,t.category,t.amount,t.direction==='in'?'Entrée':'Sortie']));table(view,['Logement','Type','Locataire','Loyer DA'],reference.map(u=>[u.num,u.type,u.locataire,u.loyer]));});}
@@ -36,7 +52,9 @@ function settings(){
  node('h3','Logements, locataires, locations et cautions',housing);
  if(!enabled)node('p',messages.REC_BACKEND_DISABLED,housing);
  else{
-  const current=node('section',null,housing,{class:'housing-current'});
+  // L'ancienne liste reste consultable mais ne masque plus les tableaux V2 sur mobile.
+  const current=node('details',null,housing,{class:'housing-current'});
+  node('summary','Ancienne liste REC — lecture seule (ouvrir si nécessaire)',current);
   node('h3','Liste actuelle des locataires',current);
   node('p','Logements importés depuis la configuration REC. Liste en lecture seule ; le référentiel V2 ci-dessous est distinct.',current);
   run(async()=>{
@@ -66,7 +84,7 @@ function settings(){
   // Le tableau historique n'est conservé qu'avant la migration explicite vers V2.
   api({action:'v2.read'}).then(r=>{if(r.state?.logements?.length)current.hidden=true;}).catch(()=>{});
   const frame=node('iframe',null,housing,{src:'/referentiel/index.html',title:'Référentiel V2'});
-  frame.addEventListener('load',()=>{frame.contentWindow.recReferenceRequest=async body=>api(body);});
+  frame.addEventListener('load',()=>{frame.contentWindow.recReferenceRequest=async body=>api(body);expandReferenceFrame(frame);});
   opened=true;
  }
  if(opened)run(async()=>{
@@ -80,7 +98,7 @@ function settings(){
  users(panels.users);
 }
 function account(){node('h2','Changer mon mot de passe',view);const f=node('form',null,view);field(f,'currentPassword','Mot de passe actuel','password');const p=field(f,'password','Nouveau mot de passe (15 caractères minimum)','password');p.minLength=15;p.autocomplete='new-password';node('button','Changer et fermer les sessions',f,{type:'submit'});formSubmit(f,async()=>{await request('password',Object.fromEntries(new FormData(f)));user=null;f.reset();render();notice('Mot de passe changé. Reconnectez-vous.');});}
-function show(name){view.replaceChildren();if(name==='entry' && user.role==='reader' || name==='settings' && user.role!=='admin')return;({summary,entry,settings,account}[name] || summary)();}
+function show(name){disconnectReferenceFrame();view.replaceChildren();if(name==='entry' && user.role==='reader' || name==='settings' && user.role!=='admin')return;({summary,entry,settings,account}[name] || summary)();}
 $('nav').addEventListener('click',e=>{if(e.target.dataset.view)show(e.target.dataset.view);});
 formSubmit($('login-form'),async()=>{const data=await request('login',Object.fromEntries(new FormData($('login-form'))));user=data.user;csrf=data.csrf;$('login-form').reset();const s=await request('session');enabled=s.backendEnabled;render();});
 formSubmit($('bootstrap-form'),async()=>{await request('bootstrap',Object.fromEntries(new FormData($('bootstrap-form'))));$('bootstrap-form').reset();$('bootstrap').hidden=true;$('login').hidden=false;notice('Administrateur REC créé. Connectez-vous avec votre identifiant et votre mot de passe.');});

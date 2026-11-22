@@ -148,7 +148,7 @@
     if(rows.some(r=>!r.etage))throw Error('Un étage reste inconnu. Migration bloquée.');
     const r=await call({action:'v2.simulate',rows});
     if(r.report.conflits || r.report.creations!==12 || r.report.transactionsCreees!==0)throw Error('Simulation non conforme. Aucune donnée importée.');
-    $('migration-summary').textContent=`Aperçu : ${r.report.creations} logements et ${r.report.creations} affectations, total ${r.report.totalMensuel.toLocaleString('fr-FR')} DA/mois. Dates laissées vides. Aucune transaction importée.`;
+    $('migration-summary').textContent=`Aperçu : ${r.report.creations} logements et ${r.report.creations} affectations, total ${r.report.totalMensuel.toLocaleString('fr-FR')} DA/mois. Dates laissées vides. Aucune transaction importée.`+(!loaded.active?' Confirmation désactivée : la propriété Apps Script REC REFERENTIEL_V2 doit être égale à 1.':loaded.canWrite===false?' Confirmation désactivée : droits administrateur requis.':'');
     pendingMigration={rows,expectedRevision:r.revision,preview:r.preview,requestId:crypto.randomUUID()};
   }));
   $('migration-confirm').addEventListener('click',()=>guarded(async()=>{
