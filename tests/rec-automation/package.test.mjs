@@ -70,6 +70,34 @@ test('workflow : manuel, gate inactive par défaut, orchestrateur séparé et ac
  const privileged=text.split('  google:')[1];assert.ok(!privileged.includes('packageCommit'));assert.ok(!/npm |pip |curl /.test(privileged));
  assert.ok(!text.includes('REC_SCRIPT_ID: ${{ inputs.'));assert.ok(!text.includes('REC_SHEET_ID: ${{ inputs.'));
 });
+test('publication REC un run : attestation V2 active, contrôles conservés, aucune migration ou Worker',()=>{
+ const text=readFileSync('.github/workflows/rec-apps-script-one-run.yml','utf8');
+ assert.match(text,/on:\n  workflow_dispatch:/);
+ assert.doesNotMatch(text,/\n  (push|pull_request|schedule|workflow_run|repository_dispatch):/);
+ assert.match(text,/V2 activée à 1 et aucune migration lancée/);
+ assert.doesNotMatch(text,/V2 inactive/);
+ assert.match(text,/default: false/g);
+ for(const required of [
+  "github.repository == 'ATALEBappli/suivi-depot-app'",
+  "github.ref == 'refs/heads/main'",
+  'inputs.rec_only_confirmed == true',
+  'inputs.audit_confirmed == true',
+  "vars.REC_AUTOMATION_ENABLED == 'true'",
+  "vars.REC_MUTATIONS_ENABLED == 'true'",
+  'environment: REC',
+  'REC_GATEWAY_TRANSPORT:',
+  'REC_EXPECTED_BUNDLE_HASH:',
+  'REC_SCRIPT_ID:',
+  'REC_SHEET_ID:',
+  'REC_DEPLOYMENT_ID:',
+  'REC_GOOGLE_OAUTH:',
+  'node --test tests/rec-automation/*.test.mjs',
+  'node scripts/rec-automation/cli.mjs publish'
+ ])assert.ok(text.includes(required),`Garde manquante : ${required}`);
+ assert.doesNotMatch(text,/v2\.import|migration\.apply|rec-worker\/publish|wrangler deploy/);
+ assert.ok(!text.includes('pull_request_target'));
+ for(const match of text.matchAll(/uses:\s+([^\s#]+)/g))assert.match(match[1],/@[a-f0-9]{40}$/);
+});
 
 test('démarrage inspect seul : aucune mutation possible sans le second gate',()=>{
  const env={REC_AUTOMATION_ENABLED:'true',REC_OPERATION:'inspect'};assert.doesNotThrow(()=>executionGate(env));
