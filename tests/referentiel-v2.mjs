@@ -124,4 +124,35 @@ test('modifications V2 relues par le contrat historique sans réécriture des tr
  assert.equal(r.tables.transactions.length,before.transactions.length+1);
  assert.deepEqual(r.tables.transactions.slice(0,-1),before.transactions);
 });
+test('deux bases V2 : disponibilités, archivage réversible et historique intact',()=>{
+ let a=M.importRows(M.empty(),rows,ctx);
+ const l=a.logements[0],t=a.locataires[0],b=a.baux[0];
+ assert.equal(l.loyerReference,25000);
+ assert.throws(()=>apply(a,'logement',{...l,disponibilite:'travaux'}),/ACTIVE_LEASE_CONFLICT/);
+ assert.throws(()=>apply(a,'archiver',{entity:'locataires',id:t.id}),/ACTIVE_LEASE_CONFLICT/);
+ a=apply(a,'bail',bailData(b,{statut:'termine',depart:'2026-11-14'}));
+ a=apply(a,'logement',{...l,disponibilite:'travaux'});
+ assert.equal(a.logements[0].disponibilite,'travaux');
+ assert.throws(()=>apply(a,'bail',{logementId:l.id,locataireId:t.id,statut:'actif',loyer:25000}),/INACTIVE_ENTITY/);
+ a=apply(a,'archiver',{entity:'locataires',id:t.id});
+ a=apply(a,'archiver',{entity:'logements',id:l.id});
+ assert.equal(a.locataires[0].archive,true);assert.equal(a.logements[0].actif,false);
+ assert.equal(a.baux.length,2);assert.equal(a.loyers.length,2);
+ assert.ok(a.historique.some(h=>h.entity==='locataires' && h.apres.archive));
+ assert.ok(a.historique.some(h=>h.entity==='logements' && h.apres.actif===false));
+});
+test('loyer de référence indépendant du bail, aucune mutation financière',()=>{
+ let a=M.importRows(M.empty(),rows,ctx);const b=a.baux[0];
+ a=apply(a,'logement',{...a.logements[0],loyerReference:27000});
+ assert.equal(a.logements[0].loyerReference,27000);
+ assert.equal(M.rent(a,b.id,'2026-11-14'),25000);
+ assert.equal(M.financial(a,b.id,'2026-11-14').cautionEncaissee,null);
+});
+test('API refuse archivage actif sans écriture et conserve les données historiques',()=>{
+ const r=runtime(),preview=r.get({action:'v2.simulate',rows:JSON.stringify(rows)}).preview;
+ assert.equal(r.post({...request,preview}).ok,true);
+ const before=structuredClone(r.tables),id=r.get({action:'v2.read'}).state.locataires[0].id;
+ const result=r.post({action:'v2.write',requestId:'archive-active-test-001',expectedRevision:1,command:{action:'archiver',data:{entity:'locataires',id}}});
+ assert.equal(result.error,'ACTIVE_LEASE_CONFLICT');assert.deepEqual(r.tables,before);
+});
 console.log(`${count} scénarios US-015 réussis, aucun réseau.`);
