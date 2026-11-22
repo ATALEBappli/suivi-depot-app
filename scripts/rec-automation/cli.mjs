@@ -4,6 +4,7 @@ import {Refusal,requireThat,digest,policyFromEnv,canonical} from './validation.m
 import {packageCommit} from './package.mjs';
 import {Google,PrivateDrive} from './google.mjs';
 import {operate} from './core.mjs';
+import {publishOneRun} from './one-run.mjs';
 
 const mask=value=>process.stdout.write('::add-mask::'+String(value).replaceAll('%','%25').replaceAll('\r','%0D').replaceAll('\n','%0A')+'\n');
 function summary(result,env) {
@@ -24,21 +25,31 @@ export async function main(args=process.argv.slice(2),env=process.env) {
     if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,'content_hash='+value.contentHash+'\n');
     summary({sourceSha:value.sourceSha,contentHash:value.contentHash,files:value.files.length},env);return;
   }
-  requireThat(mode==='run' || mode==='gate','INVALID_MODE');
-  executionGate(env);
+  requireThat(['run','gate','publish'].includes(mode),'INVALID_MODE');
+  if(mode==='publish') {
+    requireThat(env.REC_AUTOMATION_ENABLED==='true','AUTOMATION_DISABLED');
+    requireThat(env.REC_MUTATIONS_ENABLED==='true','MUTATIONS_DISABLED');
+    requireThat(env.REC_PUBLICATION_CONFIRMED==='true','REC_PUBLICATION_NOT_CONFIRMED');
+    requireThat(env.REC_GATEWAY_TRANSPORT==='true','SIGNED_TRANSPORT_REQUIRED');
+  } else executionGate(env);
   if(mode==='gate'){process.stdout.write('REC activation gates passed. Aucun accès Google.\n');return;}
   const policy=policyFromEnv(env);
   // Aucun token n'est envoyé avant validation des empreintes de cible fixes.
   let credentials;try{credentials=JSON.parse(env.REC_GOOGLE_OAUTH || '');}catch{throw new Refusal('INVALID_OAUTH_CONFIGURATION');}
   for(const key of ['REC_SCRIPT_ID','REC_SHEET_ID','REC_OWNER_EMAIL','REC_GOOGLE_EMAIL','REC_DEPLOYMENT_ID'])if(env[key])mask(env[key]);
   const operation=env.REC_OPERATION;
-  const candidate=['install','deploy'].includes(operation)?JSON.parse(readFileSync(file,'utf8')):undefined;
+  const candidate=(mode==='publish' || ['install','deploy'].includes(operation))?JSON.parse(readFileSync(file,'utf8')):undefined;
   if(candidate) {
     requireThat(candidate.sourceSha===env.SOURCE_SHA,'SOURCE_SHA_MISMATCH');
     requireThat(candidate.contentHash===env.REC_EXPECTED_BUNDLE_HASH,'BUNDLE_PROVENANCE_MISMATCH');
   }
   requireThat(typeof env.GITHUB_RUN_ID==='string' && /^\d+$/.test(env.GITHUB_RUN_ID),'MISSING_RUN_ID');
   const api=new Google({policy,mask});await api.authenticate(credentials);
+  if(mode==='publish') {
+    const result=await publishOneRun({candidate,api,store:new PrivateDrive(api),policy,
+      runId:env.GITHUB_RUN_ID,auditConfirmed:env.REC_AUDIT_CONFIRMED==='true'});
+    summary(result,env);return;
+  }
   const request={operation,candidate,requestTag:'gha-'+env.GITHUB_RUN_ID,
     auditConfirmed:env.REC_AUDIT_CONFIRMED==='true',expectedHeadHash:env.REC_EXPECTED_HEAD_HASH || '',
     backupTag:env.REC_BACKUP_REFERENCE || '',backupHash:env.REC_BACKUP_HASH || '',
