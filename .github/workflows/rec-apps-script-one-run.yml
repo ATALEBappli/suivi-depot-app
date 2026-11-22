@@ -1,0 +1,86 @@
+name: REC Apps Script — publication en un run
+# Préparation uniquement : aucune exécution automatique, aucun accès PROD.
+on:
+  workflow_dispatch:
+    inputs:
+      rec_only_confirmed:
+        type: boolean
+        description: J'autorise cette publication Apps Script REC uniquement (sans migration ni Worker/PROD)
+        required: true
+        default: false
+      audit_confirmed:
+        type: boolean
+        description: Audit récent de TOUS les comptes/déclencheurs, aucun droit PROD, configuration sauvegardée, V2 inactive et exécutions gelées
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: apps-script-rec
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'ATALEBappli/suivi-depot-app' && github.ref == 'refs/heads/main' && inputs.rec_only_confirmed == true && inputs.audit_confirmed == true && vars.REC_AUTOMATION_ENABLED == 'true' && vars.REC_MUTATIONS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      content_hash: ${{ steps.package.outputs.content_hash }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Tester les protections REC sans accès Google
+        run: node --test tests/rec-automation/*.test.mjs
+      - name: Emballer uniquement le code du commit approuvé
+        id: package
+        env:
+          SOURCE_SHA: ${{ github.workflow_sha }}
+          REC_GATEWAY_TRANSPORT: 'true'
+        run: node scripts/rec-automation/cli.mjs package "$RUNNER_TEMP/bundle.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rec-one-run-${{ github.run_id }}
+          path: ${{ runner.temp }}/bundle.json
+          retention-days: 1
+          if-no-files-found: error
+  publish:
+    needs: prepare
+    environment: REC
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: rec-one-run-${{ github.run_id }}
+          path: ${{ runner.temp }}/rec-bundle
+      - name: Inspecter, sauvegarder, installer et publier REC avec arrêt immédiat si anomalie
+        env:
+          REC_AUTOMATION_ENABLED: ${{ vars.REC_AUTOMATION_ENABLED }}
+          REC_MUTATIONS_ENABLED: ${{ vars.REC_MUTATIONS_ENABLED }}
+          REC_PUBLICATION_CONFIRMED: ${{ inputs.rec_only_confirmed }}
+          REC_AUDIT_CONFIRMED: ${{ inputs.audit_confirmed }}
+          REC_GATEWAY_TRANSPORT: 'true'
+          SOURCE_SHA: ${{ github.workflow_sha }}
+          REC_EXPECTED_BUNDLE_HASH: ${{ needs.prepare.outputs.content_hash }}
+          REC_SCRIPT_ID: ${{ secrets.REC_SCRIPT_ID }}
+          REC_SHEET_ID: ${{ secrets.REC_SHEET_ID }}
+          REC_GOOGLE_EMAIL: ${{ secrets.REC_GOOGLE_EMAIL }}
+          REC_OWNER_EMAIL: ${{ secrets.REC_OWNER_EMAIL }}
+          REC_DEPLOYMENT_ID: ${{ secrets.REC_DEPLOYMENT_ID }}
+          REC_GOOGLE_OAUTH: ${{ secrets.REC_GOOGLE_OAUTH }}
+        run: node scripts/rec-automation/cli.mjs publish "$RUNNER_TEMP/rec-bundle/bundle.json"
