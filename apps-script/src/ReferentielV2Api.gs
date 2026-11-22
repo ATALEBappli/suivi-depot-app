@@ -192,7 +192,8 @@ function _recFinanceState_(create){
  rows.forEach(r=>{const event=JSON.parse(r[1]);if(event.kind==='catalog')categories=RecFinance.catalog(event.categories);else if(event.kind==='transaction')transactions.push({...event.transaction,requestId:r[0],createdAt:r[2]});else throw Error('INVALID_FINANCE_SCHEMA');});
  return {sheet,rows,categories,transactions,revision:rows.length};
 }
-function _recReference_(){return {ok:true,environment:'REC',units:_readConfigLogements_().map(u=>({num:String(u.num),type:u.type,locataire:u.locataire,loyer:u.loyer}))};}
+// Source de migration immuable : jamais la projection V2, même après activation.
+function _recReference_(){return {ok:true,environment:'REC',units:_readLegacyConfigLogements_().map(u=>({num:String(u.num),type:u.type,locataire:u.locataire,loyer:u.loyer}))};}
 function _recFinance_(body){
  const write=['finance.write','finance.configure'].includes(body.action);
  if(write && (PropertiesService.getScriptProperties().getProperty('REC_FINANCE_ENABLED')!=='1' || !['admin','manager'].includes(_recVerifiedActor_.role)))throw Error('FORBIDDEN');

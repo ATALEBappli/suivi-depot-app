@@ -118,8 +118,13 @@ function doPost(e) {
 function _getCfgLogementsSheet_() { return _checkedSheets_()['config_logements']; }
 function _readConfigLogements_() {
   if (typeof _v2Enabled_ === 'function' && _v2Enabled_()) {
-    return ReferentielV2.legacy(_v2Load_().state, _v2Today_());
+    const state = _v2Load_().state;
+    // Avant la migration, V2 est vide : garder la lecture de l'ancien référentiel.
+    if (state.logements.length) return ReferentielV2.legacy(state, _v2Today_());
   }
+  return _readLegacyConfigLogements_();
+}
+function _readLegacyConfigLogements_() {
   const sh = _getCfgLogementsSheet_();
   const values = sh.getDataRange().getValues();
   const header = values.shift() || [];
