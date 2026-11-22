@@ -11,11 +11,12 @@
 .tenant-table tr.type-f4,.tenant-count.type-f4{background:#fff2e4}
 .tenant-table td,.tenant-table th{overflow-wrap:normal}
 .tenant-table tbody tr{border-bottom:4px solid #fff}
-@media(max-width:620px){
- .tenant-table{min-width:0}
- .tenant-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
- .tenant-table tbody,.tenant-table tr,.tenant-table td{display:block;width:100%}
- .tenant-table tr{padding:.65rem .8rem;margin:.75rem 0;border:1px solid #d7e1e7;border-radius:.75rem}
- .tenant-table td{display:flex;gap:.65rem;align-items:baseline;justify-content:space-between;padding:.34rem 0;border:0;overflow-wrap:anywhere;text-align:right}
- .tenant-table td::before{content:attr(data-label);font-weight:650;text-align:left;flex:0 0 42%;color:#28465b}
-}
+/* Sur mobile, conserver les lignes et colonnes du tableau avec défilement horizontal. */
+.tenant-table{min-width:880px}
+.tenant-table th,.tenant-table td{white-space:nowrap;padding:.65rem .7rem}
+.tenant-table th:first-child,.tenant-table td:first-child{position:sticky;left:0;z-index:1;box-shadow:2px 0 3px #17324918}
+.tenant-table th:first-child{background:#f6f8fa}
+.tenant-table tr.type-f2 td:first-child{background:#e6f3ff}
+.tenant-table tr.type-f3 td:first-child{background:#e8f7e9}
+.tenant-table tr.type-f4 td:first-child{background:#fff2e4}
+@media(max-width:620px){.tenant-table{font-size:.8rem;min-width:840px}.tenant-table th,.tenant-table td{padding:.55rem .5rem}}

@@ -38,6 +38,10 @@ try{for(const width of [390,320]){
  assert.equal(await page.locator('.settings-panel[data-panel="housing"] .housing-current tbody tr').count(),12);
  assert.match(await page.locator('.housing-current').textContent(),/FICTIF 1/);
  assert.equal(await page.locator('.tenant-table th').count(),7);
+ assert.equal(await page.locator('.tenant-table').evaluate(e=>getComputedStyle(e).display),'table');
+ assert.equal(await page.locator('.tenant-table tbody tr').first().evaluate(e=>getComputedStyle(e).display),'table-row');
+ assert.equal(await page.locator('.tenant-table-wrap').evaluate(e=>getComputedStyle(e).overflowX),'auto');
+
  assert.equal(await page.locator('.tenant-table tbody tr.type-f2').count(),4);
  assert.equal(await page.locator('.tenant-table tbody tr.type-f3').count(),4);
  assert.equal(await page.locator('.tenant-table tbody tr.type-f4').count(),4);
