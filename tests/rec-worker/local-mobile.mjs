@@ -42,7 +42,7 @@ try{for(const width of [390,320]){
  assert.equal(await page.locator('.tenant-table tbody tr.type-f3').count(),4);
  assert.equal(await page.locator('.tenant-table tbody tr.type-f4').count(),4);
  assert.match(await page.locator('.tenant-legend').textContent(),/F2 : 4/);
- assert.match(await page.locator('.tenant-table tbody tr').first().locator('td').last().textContent(),/16\\s000/);
+ assert.match(await page.locator('.tenant-table tbody tr').first().locator('td').last().textContent(),/16\s000/);
  assert.equal(await page.locator('.tenant-table tbody tr').first().locator('td').nth(4).textContent(),'—');
  assert.equal(await page.locator('.tenant-table tbody tr').first().locator('td').nth(5).textContent(),'—');
  assert.equal(await page.locator('.tenant-table tbody tr').first().evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(230, 243, 255)');
