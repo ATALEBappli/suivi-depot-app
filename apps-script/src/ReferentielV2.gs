@@ -68,10 +68,11 @@ var ReferentielV2 = (() => {
     }
     const nums = new Set();
     s.logements.forEach(r => {
-      object(r,['id','numero','type','etage','actif']); text(r.numero);text(r.type);text(r.etage,false);
-      if (r.numero !== r.numero.trim() || nums.has(numero(r.numero)) || typeof r.actif !== 'boolean') fail('INVALID_LOGEMENT'); nums.add(numero(r.numero));
+      object(r,['id','numero','type','etage','actif','disponibilite','loyerReference']); text(r.numero);text(r.type);text(r.etage,false);
+      if (r.numero !== r.numero.trim() || nums.has(numero(r.numero)) || typeof r.actif !== 'boolean' || (r.disponibilite !== undefined && !['libre','travaux'].includes(r.disponibilite))) fail('INVALID_LOGEMENT'); nums.add(numero(r.numero));
+      if(r.loyerReference !== undefined)amount(r.loyerReference,true);
     });
-    s.locataires.forEach(r => {object(r,['id','nom','complement','cassePersonnalisee']);text(r.nom);text(r.complement,false);});
+    s.locataires.forEach(r => {object(r,['id','nom','complement','cassePersonnalisee','archive']);text(r.nom);text(r.complement,false);if(r.archive!==undefined && typeof r.archive!=='boolean')fail('INVALID_TENANT');});
     s.baux.forEach(b => {
       object(b,['id','logementId','locataireId','arrivee','depart','suiviFinancierDepuis','statut','cautionPrevue','devise']);
       find(s,'logements',b.logementId);find(s,'locataires',b.locataireId);
@@ -85,6 +86,9 @@ var ReferentielV2 = (() => {
       const a=s.baux[i], b=s.baux[j];
       // Intervalles [arrivée, départ) ; une arrivée inconnue est une borne ouverte prudente.
       if (a.logementId === b.logementId && (a.arrivee || '0000') < (b.depart || '9999') && (b.arrivee || '0000') < (a.depart || '9999')) fail('OVERLAPPING_BAILS');
+    }
+    for(const b of s.baux.filter(b=>b.statut==='actif')) {
+      if(find(s,'locataires',b.locataireId).archive || !find(s,'logements',b.logementId).actif || find(s,'logements',b.logementId).disponibilite==='travaux')fail('ACTIVE_LEASE_CONFLICT');
     }
     s.loyers.forEach(l => {
       object(l,['id','bailId','montant','effet']);find(s,'baux',l.bailId);amount(l.montant);date(l.effet);
@@ -127,14 +131,17 @@ var ReferentielV2 = (() => {
     }
     switch(command.action) {
       case 'logement':
-        object(d,['id','numero','type','etage','actif']);
+        object(d,['id','numero','type','etage','actif','disponibilite','loyerReference']);
         entity='logements';if(d.id)before=copy(find(s,entity,d.id));
         after={id:d.id || id(),numero:numero(d.numero),type:type(d.type),etage:etage(d.etage ?? ''),actif:d.actif};
+        if(d.disponibilite!==undefined || before?.disponibilite!==undefined)after.disponibilite=d.disponibilite ?? before?.disponibilite;
+        if(d.loyerReference!==undefined || before?.loyerReference!==undefined)after.loyerReference=amount(d.loyerReference ?? before?.loyerReference ?? null,true);
         allowedReference(s,'types',after.type,before?.type);allowedReference(s,'etages',after.etage,before?.etage);break;
       case 'locataire':
-        object(d,['id','nom','complement','cassePersonnalisee']);entity='locataires';if(d.id)before=copy(find(s,entity,d.id));
+        object(d,['id','nom','complement','cassePersonnalisee','archive']);entity='locataires';if(d.id)before=copy(find(s,entity,d.id));
         if(d.cassePersonnalisee!==undefined && typeof d.cassePersonnalisee!=='boolean')fail('INVALID_FIELDS');
         after={id:d.id || id(),nom:nom(d.nom,d.cassePersonnalisee===true),complement:text(d.complement ?? '',false)};
+        if(d.archive!==undefined || before?.archive!==undefined)after.archive=d.archive ?? before?.archive;
         if(d.cassePersonnalisee)after.cassePersonnalisee=true;
         if(s.locataires.some(t=>t.id!==after.id && key(t.nom)===key(after.nom)))fail('DUPLICATE_TENANT');break;
       case 'bail':
@@ -144,8 +151,14 @@ var ReferentielV2 = (() => {
           if (d.logementId !== before.logementId || d.locataireId !== before.locataireId || d.loyer !== undefined) fail('IMMUTABLE_BAIL_PARTIES');
         }
         after={id:d.id || id(),logementId:d.logementId,locataireId:d.locataireId,arrivee:date(d.arrivee ?? null),depart:date(d.depart ?? null),suiviFinancierDepuis:date(d.suiviFinancierDepuis ?? null),statut:d.statut,cautionPrevue:amount(d.cautionPrevue ?? null,true),devise:'DZD'};
-        if(!before)s.loyers.push({id:id(),bailId:after.id,montant:amount(d.loyer),effet:null});
+        if(!before){if(!find(s,'logements',d.logementId).actif || find(s,'logements',d.logementId).disponibilite==='travaux' || find(s,'locataires',d.locataireId).archive)fail('INACTIVE_ENTITY');s.loyers.push({id:id(),bailId:after.id,montant:amount(d.loyer),effet:null});}
         break;
+      case 'archiver': {
+        object(d,['entity','id']);if(!['logements','locataires'].includes(d.entity))fail('INVALID_ACTION');
+        entity=d.entity;before=copy(find(s,entity,d.id));
+        if(s.baux.some(b=>(entity==='logements'?b.logementId:b.locataireId)===d.id && b.statut==='actif'))fail('ACTIVE_LEASE_CONFLICT');
+        after=entity==='logements'?{...before,actif:false}:{...before,archive:true};break;
+      }
       case 'loyer': {
         object(d,['bailId','montant','effet']);const b=find(s,'baux',d.bailId);const effet=date(d.effet);
         if(!effet || b.statut!=='actif' || effet<(ctx.today || ctx.now.slice(0,10)) || s.loyers.some(l=>l.bailId===b.id && l.effet && l.effet>=effet))fail('INVALID_RENT_EFFECT');
@@ -184,7 +197,7 @@ var ReferentielV2 = (() => {
     const report=simulate(state,rows,ctx.today || ctx.now.slice(0,10));if(report.conflits)fail('IMPORT_CONFLICT');let s=copy(state);
     for(const r of normalize(rows)) {
       if(s.logements.some(l=>numero(l.numero)===r.num))continue;
-      s=apply(s,{action:'logement',data:{numero:r.num,type:r.type,etage:r.etage,actif:true}},ctx);const l=s.logements.at(-1);
+      s=apply(s,{action:'logement',data:{numero:r.num,type:r.type,etage:r.etage,actif:true,loyerReference:r.loyer}},ctx);const l=s.logements.at(-1);
       const matches=s.locataires.filter(t=>key(t.nom)===key(r.locataire));if(matches.length>1)fail('AMBIGUOUS_TENANT');
       let t=matches[0];if(!t){s=apply(s,{action:'locataire',data:{nom:r.locataire}},ctx);t=s.locataires.at(-1);}
       s=apply(s,{action:'bail',data:{logementId:l.id,locataireId:t.id,statut:'actif',loyer:r.loyer}},ctx);
