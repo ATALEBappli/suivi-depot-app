@@ -2,7 +2,7 @@
 import {pathToFileURL} from 'node:url';
 import {Google,PrivateDrive} from './google.mjs';
 import {inspect} from './core.mjs';
-import {inspectPendingDeploy,RECOVERY,RECOVERY_V3} from './inspect-pending-deploy.mjs';
+import {inspectPendingDeploy,RECOVERY,RECOVERY_V3,RECOVERY_ONE_RUN} from './inspect-pending-deploy.mjs';
 import {reconciliationFetcher} from './reconcile-version.mjs';
 import {Refusal,requireThat,isHash,digest,policyFromEnv,canonical} from './validation.mjs';
 
@@ -15,7 +15,7 @@ export function pendingReconciliationGate(env) {
 export async function reconcilePendingDeploy({api,store,policy,operationHash,deploymentHash,
   expected=RECOVERY,expectedVersion=2,now=()=>new Date().toISOString()}) {
   requireThat(isHash(operationHash) && isHash(deploymentHash),'MISSING_PROOF_HASHES');
-  requireThat(expected?.tag===RECOVERY.tag || expected?.tag===RECOVERY_V3.tag,'UNKNOWN_RECOVERY_TARGET');
+  requireThat([RECOVERY.tag,RECOVERY_V3.tag,RECOVERY_ONE_RUN.tag].includes(expected?.tag),'UNKNOWN_RECOVERY_TARGET');
   const archiveTag='reconcile-'+expected.tag;
   const current=await store.read('operation',expected.tag);
   requireThat(current && ['pending','done'].includes(current.value.status),'MISSING_OPERATION');
