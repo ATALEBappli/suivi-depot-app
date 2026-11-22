@@ -47,7 +47,7 @@ try {
   const name='Mohamed Fictif-'+num;await page.waitForFunction(n=>document.querySelector('#tenant-edit').textContent.includes(n),name);
   const t=(await read()).state.locataires.find(t=>t.nom===name);
   const lease=page.locator('#bail-form');await lease.locator('[name=logementId]').selectOption(housing.id);await lease.locator('[name=locataireId]').selectOption(t.id);await lease.locator('[name=loyer]').fill('17000');await lease.locator('button:not([type=reset])').click();
-  await page.waitForFunction(n=>document.querySelector('#logements').textContent.includes(n),name);
+  await page.waitForFunction(n=>document.querySelector('#locataires').textContent.includes(n),name);
   const b=(await read()).state.baux.find(b=>b.logementId===housing.id);
   const rent=page.locator('#loyer-form');await rent.locator('[name=bailId]').selectOption(b.id);await rent.locator('[name=montant]').fill('18000');await rent.locator('[name=effet]').fill('2099-01-01');await rent.locator('button').click();
   await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Modification enregistrée.'));

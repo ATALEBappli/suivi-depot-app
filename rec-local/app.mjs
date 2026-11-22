@@ -48,7 +48,7 @@ function settings(){
    const legend=node('div',null,current,{class:'tenant-legend','aria-label':'Nombre de logements par type'});
    for(const type of ['F2','F3','F4'])node('span',`${type} : ${counts[type]}`,legend,{class:'tenant-count type-'+type.toLowerCase()});
    node('p','Caution indicative par défaut : loyer mensuel − 2 000 DA. Elle n’est pas encore enregistrée. Dates non renseignées.',current,{class:'tenant-hint'});
-   const headings=['Appartement','Type','Locataire','Loyer (DA)','Entrée','Sortie','Caution (DA)'];
+   const headings=['App','Type','Locataire','Loyer (DA)','Entrée','Sortie','Caution (DA)'];
    const wrap=node('div',null,current,{class:'tenant-table-wrap'});
    const listing=node('table',null,wrap,{class:'tenant-table'});
    const head=node('tr',null,node('thead',null,listing));
@@ -63,6 +63,8 @@ function settings(){
     for(let i=0;i<headings.length;i++)node('td',String(values[i] ?? ''),tr,{'data-label':headings[i]});
    }
   });
+  // Le tableau historique n'est conservé qu'avant la migration explicite vers V2.
+  api({action:'v2.read'}).then(r=>{if(r.state?.logements?.length)current.hidden=true;}).catch(()=>{});
   const frame=node('iframe',null,housing,{src:'/referentiel/index.html',title:'Référentiel V2'});
   frame.addEventListener('load',()=>{frame.contentWindow.recReferenceRequest=async body=>api(body);});
   opened=true;

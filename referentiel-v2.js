@@ -2,8 +2,8 @@
 (() => {
   'use strict';
   const N=ReferentielV2.normalizers;
-  const errors={INVALID_IMPORT:'Le fichier doit contenir entre 1 et 5 000 logements.',AMBIGUOUS_TENANT:'Plusieurs fiches correspondent à ce locataire. Vérifiez le référentiel avant import.',INVALID_TEXT:'Un champ obligatoire est vide ou contient une valeur interdite.',INVALID_AMOUNT:'Montant invalide : utiliser un nombre positif ou nul avec deux décimales maximum.',INVALID_DATE:'Date invalide.',OVERLAPPING_BAILS:'Une location existe déjà sur cette période. Renseignez son départ avant de créer la suivante.',INVALID_RENT_EFFECT:'La date du nouveau loyer doit être aujourd’hui ou ultérieure, après les versions existantes.',DUPLICATE_TENANT:'Ce locataire existe déjà.',INVALID_LOGEMENT:'Numéro déjà utilisé ou logement invalide.',DUPLICATE_NUMBER:'Deux lignes portent le même numéro après normalisation.',INACTIVE_OR_UNKNOWN_REFERENCE:'Type ou étage absent des valeurs actives. Vérifiez le Paramétrage.',DUPLICATE_REFERENCE:'Cette valeur existe déjà.',REFERENCE_IN_USE:'Cette valeur est utilisée : elle peut être désactivée, mais pas renommée.',V2_DISABLED:'Les écritures V2 ne sont pas activées en REC.',STALE_REVISION:'Le référentiel a changé. Actualisez puis recommencez.',IMPORT_CONFLICT:'Import en conflit : aucune donnée remplacée.'};
-  let loaded, pendingImport=null, pendingWrite=null, busy=false;
+  const errors={INVALID_IMPORT:'Le fichier doit contenir entre 1 et 5 000 logements.',AMBIGUOUS_TENANT:'Plusieurs fiches correspondent à ce locataire. Vérifiez le référentiel avant import.',INVALID_TEXT:'Un champ obligatoire est vide ou contient une valeur interdite.',INVALID_AMOUNT:'Montant invalide : utiliser un nombre positif ou nul avec deux décimales maximum.',INVALID_DATE:'Date invalide.',OVERLAPPING_BAILS:'Une location existe déjà sur cette période. Renseignez son départ avant de créer la suivante.',INVALID_RENT_EFFECT:'La date du nouveau loyer doit être aujourd’hui ou ultérieure, après les versions existantes.',DUPLICATE_TENANT:'Ce locataire existe déjà.',INVALID_LOGEMENT:'Numéro déjà utilisé ou logement invalide.',INVALID_TENANT:'Fiche locataire invalide.',INACTIVE_ENTITY:'Le logement est indisponible ou le locataire est archivé.',ACTIVE_LEASE_CONFLICT:'Terminez le bail actif avant de mettre le logement en travaux ou d’archiver une fiche.',DUPLICATE_NUMBER:'Deux lignes portent le même numéro après normalisation.',INACTIVE_OR_UNKNOWN_REFERENCE:'Type ou étage absent des valeurs actives. Vérifiez le Paramétrage.',DUPLICATE_REFERENCE:'Cette valeur existe déjà.',REFERENCE_IN_USE:'Cette valeur est utilisée : elle peut être désactivée, mais pas renommée.',V2_DISABLED:'Les écritures V2 ne sont pas activées en REC.',STALE_REVISION:'Le référentiel a changé. Actualisez puis recommencez.',IMPORT_CONFLICT:'Import en conflit : aucune donnée remplacée.'};
+  let loaded, pendingImport=null, pendingMigration=null, pendingWrite=null, busy=false, selectedTenant='', selectedHousing='';
   const writable=()=>!!loaded?.active && loaded?.canWrite!==false;
   const $=id=>document.getElementById(id), today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris'}).format(new Date());
   const message=t=>{$('message').textContent=t;};
@@ -17,7 +17,7 @@
   async function call(body) {const r=await api(body);if(!r.ok){const e=Error(errors[r.error] || r.error || 'Échec de la demande');e.authoritative=r.error!=='V2_REQUEST_FAILED';throw e;}return r;}
   async function guarded(fn) {
     if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>{b.disabled=true;});
-    try{await fn();}catch(e){message(e.message);}finally{busy=false;document.querySelectorAll('button').forEach(b=>{b.disabled=false;});$('import-apply').disabled=!pendingImport || !writable();document.querySelectorAll('form button').forEach(b=>{b.disabled=!writable();});}
+    try{await fn();}catch(e){message(e.message);}finally{busy=false;document.querySelectorAll('button').forEach(b=>{b.disabled=false;});$('import-apply').disabled=!pendingImport || !writable();$('migration-confirm').disabled=!pendingMigration || !writable();document.querySelectorAll('form button').forEach(b=>{b.disabled=!writable();});}
   }
   const cell=(row,value)=>{const td=document.createElement('td');td.textContent=value;row.append(td);return td;};
   const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',fn);return b;};
@@ -43,7 +43,7 @@
   function editHousing(id='') {
     const l=loaded.state.logements.find(l=>l.id===id),f=$('logement-form');
     f.reset();queueMicrotask(()=>{
-      fill(f,l?{...l,numero:N.numero(l.numero),type:N.type(l.type),etage:N.etage(l.etage)}:{id:'',numero:'',actif:true});
+      fill(f,l?{...l,numero:N.numero(l.numero),type:N.type(l.type),etage:N.etage(l.etage)}:{id:'',numero:'',actif:true,disponibilite:'libre'});
       $('logement-edit').value=id;$('housing-title').textContent=l?'Modifier le logement / local':'Ajouter un logement / local';
       $('housing-save').textContent=l?'Enregistrer les modifications':'Ajouter le logement / local';
     });
@@ -66,12 +66,25 @@
   }
   function render() {
     renderReferences();
-    const s=loaded.state;const tbody=$('logements');tbody.replaceChildren();
+    const s=loaded.state;const tbody=$('logements'),people=$('locataires');tbody.replaceChildren();people.replaceChildren();
+    let legend=$('v2-type-counts');if(!legend){legend=document.createElement('p');legend.id='v2-type-counts';legend.className='type-summary';tbody.closest('section').querySelector('.table-wrap').before(legend);}
+    legend.replaceChildren();for(const type of ['F2','F3','F4']){const chip=document.createElement('span');chip.className='type-chip';chip.dataset.type=type;chip.textContent=type+' : '+s.logements.filter(l=>l.actif && l.type===type).length;legend.append(chip);}
+    const at=today(), money=n=>n===null || n===undefined?'—':Number(n).toLocaleString('fr-FR');
+    const active=b=>b.statut==='actif' && (!b.arrivee || b.arrivee<=at) && (!b.depart || at<b.depart);
+    const leases=new Map(s.locataires.map(t=>[t.id,s.baux.find(b=>b.locataireId===t.id && active(b))]));
+    for(const t of s.locataires.filter(t=>!t.archive)){
+      const b=leases.get(t.id),l=b?s.logements.find(l=>l.id===b.logementId):null,amount=b?ReferentielV2.rent(s,b.id,at):null;
+      const tr=document.createElement('tr');tr.dataset.id=t.id;tr.dataset.type=l?.type || '';tr.tabIndex=0;tr.setAttribute('aria-selected',String(selectedTenant===t.id));
+      const caution=b?.cautionPrevue ?? (amount!==null?Math.max(0,amount-2000):null);
+      [l?.numero || '—',t.nom,l?.type || '—',money(amount),b?.arrivee || '—',b?.depart || '—',money(caution)+(b && b.cautionPrevue===null && amount!==null?' *':''),b?'Actif':'Inactif'].forEach(v=>cell(tr,v));
+      tr.addEventListener('click',()=>{selectedTenant=t.id;render();});tr.addEventListener('keydown',e=>{if(e.key==='Enter'){selectedTenant=t.id;render();}});people.append(tr);
+    }
     for(const l of s.logements){
-      const at=today(), b=s.baux.find(b=>b.logementId===l.id && (!b.arrivee || b.arrivee<=at) && (!b.depart || b.depart>at));
+      if(!l.actif)continue;
+      const b=s.baux.find(b=>b.logementId===l.id && active(b));
       const rent=b?s.loyers.filter(r=>r.bailId===b.id && (!r.effet || r.effet<=at)).sort((a,b)=>(b.effet || '').localeCompare(a.effet || ''))[0]?.montant:null;
-      const tr=document.createElement('tr');[l.numero,l.type,l.etage,l.actif?'Actif':'Inactif',b?s.locataires.find(t=>t.id===b.locataireId).nom:'—',rent ?? '—'].forEach(v=>cell(tr,v));
-      cell(tr,'').append(button('Modifier',()=>editHousing(l.id)),button('Locations',()=>{$('bail-filter').value=l.id;renderBaux();setBailForm();}));tbody.append(tr);
+      const tr=document.createElement('tr');tr.dataset.id=l.id;tr.dataset.type=l.type;tr.tabIndex=0;tr.setAttribute('aria-selected',String(selectedHousing===l.id));[l.numero,l.type,l.etage,money(l.loyerReference ?? rent),b?'Occupé':l.disponibilite==='travaux'?'Travaux':'Libre'].forEach(v=>cell(tr,v));
+      tr.addEventListener('click',()=>{selectedHousing=l.id;render();});tr.addEventListener('keydown',e=>{if(e.key==='Enter'){selectedHousing=l.id;render();}});tbody.append(tr);
     }
     options($('bail-filter'),s.logements,l=>`${l.numero} — ${l.type}`);
     options($('bail-form').elements.logementId,s.logements,l=>l.numero);
@@ -81,10 +94,11 @@
     options($('logement-edit'),[{id:'',numero:'Ajouter un nouveau logement / local'},...s.logements],l=>l.numero);
     $('numeros').replaceChildren();for(const n of new Set([...Array.from({length:20},(_,i)=>String(i+1).padStart(2,'0')),...s.logements.map(l=>N.numero(l.numero))])){const o=document.createElement('option');o.value=n;$('numeros').append(o);}
     $('history').textContent=JSON.stringify(s.historique,null,2);
-    $('environment').textContent=`REC${window.google?.script?' privé':' local fictif — données en mémoire'} — révision ${loaded.revision} — V2 ${loaded.active?'active':'inactive (lecture/simulation uniquement)'}`;
+    $('environment').textContent=`REC — révision ${loaded.revision} — V2 ${loaded.active?'active':'inactive (lecture/simulation uniquement)'}`;
+    $('migration-section').hidden=!!s.logements.length;
     document.querySelectorAll('form button').forEach(b=>{b.disabled=!writable();});renderBaux();
   }
-  async function load(){loaded=await call({action:'v2.read'});pendingImport=null;pendingWrite=null;render();}
+  async function load(){loaded=await call({action:'v2.read'});pendingImport=null;pendingMigration=null;pendingWrite=null;render();}
   async function write(command){
     if(!writable())throw Error('Écriture non autorisée : V2 inactive ou accès en lecture seule.');
     if(pendingWrite && JSON.stringify(pendingWrite.command)!==JSON.stringify(command))throw Error('Une écriture reste incertaine. Réessayez la même demande ou actualisez le référentiel.');
@@ -96,7 +110,7 @@
   for(const action of ['logement','locataire','bail','loyer','reference']) {
     const form=$(action+'-form');form.addEventListener('submit',event=>{event.preventDefault();guarded(async()=>{
       const data=values(form);if(!data.id)delete data.id;
-      if(action==='logement'){data.actif=form.elements.actif.checked;data.numero=N.numero(data.numero);data.type=N.type(form.elements.type.value);data.etage=N.etage(form.elements.etage.value);}
+      if(action==='logement'){data.actif=form.elements.actif.checked;data.numero=N.numero(data.numero);data.type=N.type(form.elements.type.value);data.etage=N.etage(form.elements.etage.value);if(!data.loyerReference)data.loyerReference=null;}
       if(action==='locataire'){data.cassePersonnalisee=form.elements.cassePersonnalisee.checked;data.nom=N.nom(data.nom,data.cassePersonnalisee);}
       if(action==='reference')data.actif=form.elements.actif.checked;
       if(action==='bail') {
@@ -116,6 +130,33 @@
   $('reference-edit').addEventListener('change',()=>{const f=$('reference-form'),r=ReferentielV2.references(loaded.state)[f.elements.category.value].find(r=>r.id===$('reference-edit').value);fill(f,r || {id:'',label:'',actif:true});});
   $('reference-form').addEventListener('reset',()=>queueMicrotask(()=>{const f=$('reference-form');f.elements.id.value='';renderReferences();$('reference-edit').value='';}));
   $('bail-filter').addEventListener('change',renderBaux);
+  const focusForm=id=>$(id).scrollIntoView({behavior:'smooth',block:'start'});
+  $('tenant-add').addEventListener('click',()=>{$('locataire-form').reset();$('tenant-edit').value='';focusForm('locataire-form');});
+  $('tenant-modify').addEventListener('click',()=>{const t=loaded?.state.locataires.find(t=>t.id===selectedTenant);if(!t)return message('Sélectionnez un locataire dans le tableau.');fill($('locataire-form'),{...t,cassePersonnalisee:!!t.cassePersonnalisee});$('tenant-edit').value=t.id;focusForm('locataire-form');});
+  $('tenant-modify').after(button('Modifier entrée / sortie / caution',()=>{const b=loaded?.state.baux.find(b=>b.locataireId===selectedTenant && b.statut==='actif');if(!b)return message('Sélectionnez un locataire ayant un bail actif.');$('bail-filter').value=b.logementId;renderBaux();setBailForm(b);focusForm('bail-form');}));
+  $('tenant-delete').addEventListener('click',()=>guarded(async()=>{const t=loaded?.state.locataires.find(t=>t.id===selectedTenant);if(!t)throw Error('Sélectionnez un locataire.');if(loaded.state.baux.some(b=>b.locataireId===t.id && b.statut==='actif'))throw Error('Terminez d’abord le bail et renseignez sa date de sortie. Le locataire restera inactif et son historique sera conservé.');if(!confirm('Archiver '+t.nom+' ? Son historique restera conservé.'))return;await write({action:'archiver',data:{entity:'locataires',id:t.id}});selectedTenant='';}));
+  $('housing-add').addEventListener('click',()=>{editHousing();focusForm('logement-form');});
+  $('housing-modify').addEventListener('click',()=>{if(!selectedHousing)return message('Sélectionnez un logement dans le tableau.');editHousing(selectedHousing);focusForm('logement-form');});
+  $('housing-delete').addEventListener('click',()=>guarded(async()=>{const l=loaded?.state.logements.find(l=>l.id===selectedHousing);if(!l)throw Error('Sélectionnez un logement.');if(loaded.state.baux.some(b=>b.logementId===l.id && b.statut==='actif'))throw Error('Terminez d’abord la location active ; aucune information ne sera supprimée.');if(!confirm('Archiver le logement '+l.numero+' ? Ses anciens baux resteront conservés.'))return;await write({action:'archiver',data:{entity:'logements',id:l.id}});selectedHousing='';}));
+  $('migration-preview').addEventListener('click',()=>guarded(async()=>{
+    pendingMigration=null;
+    if(loaded.state.logements.length)throw Error('Le référentiel V2 contient déjà des logements. Migration refusée.');
+    const legacy=await call({action:'rec.reference'}),units=legacy.units;
+    const etage=num=>['05','06','09','10','11','12'].includes(num)?'1er étage':['15','16','18','19','20'].includes(num)?'2e étage':num==='21'?'Toit':null;
+    if(!Array.isArray(units) || units.length!==12 || new Set(units.map(u=>N.numero(String(u.num)))).size!==12)throw Error('Le référentiel REC attendu de 12 logements est incomplet. Aucune migration possible.');
+    const rows=units.map(u=>({num:N.numero(String(u.num)),type:String(u.type),etage:etage(N.numero(String(u.num))),locataire:String(u.locataire),loyer:Number(u.loyer)}));
+    if(rows.some(r=>!r.etage))throw Error('Un étage reste inconnu. Migration bloquée.');
+    const r=await call({action:'v2.simulate',rows});
+    if(r.report.conflits || r.report.creations!==12 || r.report.transactionsCreees!==0)throw Error('Simulation non conforme. Aucune donnée importée.');
+    $('migration-summary').textContent=`Aperçu : ${r.report.creations} logements et ${r.report.creations} affectations, total ${r.report.totalMensuel.toLocaleString('fr-FR')} DA/mois. Dates laissées vides. Aucune transaction importée.`;
+    pendingMigration={rows,expectedRevision:r.revision,preview:r.preview,requestId:crypto.randomUUID()};
+  }));
+  $('migration-confirm').addEventListener('click',()=>guarded(async()=>{
+    if(!pendingMigration)throw Error('Prévisualisez d’abord les 12 fiches.');
+    if(!confirm('Confirmer une seule migration de 12 fiches vers V2 REC ? Les anciennes transactions et la configuration historique resteront inchangées.'))return;
+    const p=pendingMigration;await call({action:'v2.import',...p});pendingMigration=null;await load();message('12 fiches migrées dans V2 REC. Aucune transaction historique importée.');
+  }));
+  $('bail-form').elements.loyer.addEventListener('input',()=>{const f=$('bail-form'),rent=Number(f.elements.loyer.value);if(!f.elements.cautionPrevue.value && f.elements.loyer.value && Number.isFinite(rent))f.elements.cautionPrevue.value=String(Math.max(0,rent-2000));});
   $('reload').addEventListener('click',()=>guarded(async()=>{await load();message('Référentiel actualisé.');}));
   $('import-file').addEventListener('change',()=>{pendingImport=null;$('import-apply').disabled=true;$('report').textContent='';$('import-summary').textContent='';$('import-preview').replaceChildren();});
   $('simulate').addEventListener('click',()=>guarded(async()=>{
