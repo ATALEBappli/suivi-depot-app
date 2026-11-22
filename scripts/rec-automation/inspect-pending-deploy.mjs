@@ -12,6 +12,14 @@ export const RECOVERY_V3=Object.freeze({
   backupTag:'2fabf0aa-6941-4a21-889f-a02e3e72d67c',
   backupHash:'6fc5745fd734761513b93403982c097d554882fd53ad7137766c035d3c8fa33b'
 });
+// Cible exacte du run unique #50. Empreintes non secrètes constatées dans les
+// journaux inspect ; aucune possibilité de viser une autre opération.
+export const RECOVERY_ONE_RUN=Object.freeze({
+  tag:'gha-45038142518-deploy',sourceSha:'23e480d84b8f7964d5b978094945b70a2d42a13f',
+  hash:'cbee0b2b863fba15257480eef44d3615191e1e07d2352e4c5cecf27a03abce61',
+  backupTag:'0e71f760-7814-456f-8a7c-c16ac696f265',
+  backupHash:'0b63e4dd91b8986e3f044a8dd6cbbbd8b796f290a1fba74aca1e0063c38eb29f'
+});
 function sameEntrypoint(before,after,expected,policy) {
   if(canonical(before)===canonical(after))return true;
   if(expected.tag!==RECOVERY_V3.tag || !policy.gatewayTransport || before?.length!==1 || after?.length!==1)return false;
