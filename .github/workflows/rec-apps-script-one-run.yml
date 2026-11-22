@@ -10,7 +10,7 @@ on:
         default: false
       audit_confirmed:
         type: boolean
-        description: Audit récent de TOUS les comptes/déclencheurs, aucun droit PROD, configuration sauvegardée, V2 inactive et exécutions gelées
+        description: Audit REC récent (comptes/déclencheurs sans droit PROD), sauvegarde vérifiée, V2 activée à 1 et aucune migration lancée
         required: true
         default: false
 permissions:
