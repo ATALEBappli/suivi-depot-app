@@ -1,1 +1,21 @@
 :root{font:16px system-ui,sans-serif;color:#173249;background:#f3f6fa}*{box-sizing:border-box}body{margin:0;line-height:1.5}header{background:#173b52;color:white;padding:1.3rem max(1rem,calc((100vw - 1160px)/2))}header p{margin:.3rem 0}h1{font-size:1.6rem;margin:.2rem 0}h2{margin:1.5rem 0 .5rem}h3{margin:.4rem 0 .8rem}small{color:#ffdb8c}main{max-width:1160px;margin:auto;padding:1rem 1.2rem}section{min-width:0}form,article,.settings-panel{background:white;border:1px solid #e0e8ef;border-radius:1rem;padding:1.2rem;margin:1rem 0;box-shadow:0 3px 16px #122d4110}label{display:block;margin:.7rem 0;font-weight:550}input,select,textarea,button{font:inherit;max-width:100%;min-height:44px;border:1px solid #8b9ca8;border-radius:.5rem;padding:.55rem}input,select,textarea{display:block;width:100%;margin:.3rem 0;font-weight:400;background:white;color:#173249}button{background:#174e6d;color:white;cursor:pointer;margin:.2rem}button:disabled{opacity:.5;cursor:not-allowed}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #f2b94b;outline-offset:2px}nav{display:flex;flex-wrap:wrap;gap:.4rem}#nav{margin:1rem 0;gap:.5rem}#nav button{flex:1 1 135px}#identity{color:#456274;font-weight:600}.settings-tabs{margin-top:1rem}.settings-tabs button{background:#edf3f7;color:#173b52;border-color:#c4d4df;flex:1 1 170px}.settings-tabs button[aria-pressed=true]{background:#174e6d;color:#fff}.settings-panel{min-height:220px}.settings-panel form{box-shadow:none}.settings-panel iframe{min-height:680px}pre{white-space:pre-wrap;overflow-wrap:anywhere}iframe{width:100%;height:80vh;border:0;background:white}#notice{white-space:pre-wrap;color:#8a240e;font-weight:600}[hidden]{display:none!important}table{border-collapse:collapse;width:100%;font-size:.92rem}td,th{padding:.7rem .5rem;border-bottom:1px solid #e0e8ef;text-align:left;overflow-wrap:anywhere}.scroll{overflow-x:auto}@media(min-width:780px){#view>form:not(:only-child){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 1.1rem}#view>form button,#view>form p,#view>form textarea{grid-column:1/-1}}@media(max-width:520px){main{padding:.8rem}header{padding:1rem}form,article,.settings-panel{padding:.85rem}#nav button{flex:1 1 125px}.settings-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.settings-panel iframe{min-height:70vh}table{font-size:.82rem}}
+
+/* Liste REC en lecture seule : repères pastel et cartes lisibles sur téléphone. */
+.tenant-legend{display:flex;flex-wrap:wrap;gap:.55rem;margin:.75rem 0}
+.tenant-count{border-radius:999px;border:1px solid #cfdae0;padding:.28rem .7rem;font-weight:700;color:#173249}
+.tenant-hint{font-size:.85rem;color:#42576a}
+.tenant-table-wrap{overflow-x:auto}
+.tenant-table{min-width:800px}
+.tenant-table tr.type-f2,.tenant-count.type-f2{background:#e6f3ff}
+.tenant-table tr.type-f3,.tenant-count.type-f3{background:#e8f7e9}
+.tenant-table tr.type-f4,.tenant-count.type-f4{background:#fff2e4}
+.tenant-table td,.tenant-table th{overflow-wrap:normal}
+.tenant-table tbody tr{border-bottom:4px solid #fff}
+@media(max-width:620px){
+ .tenant-table{min-width:0}
+ .tenant-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+ .tenant-table tbody,.tenant-table tr,.tenant-table td{display:block;width:100%}
+ .tenant-table tr{padding:.65rem .8rem;margin:.75rem 0;border:1px solid #d7e1e7;border-radius:.75rem}
+ .tenant-table td{display:flex;gap:.65rem;align-items:baseline;justify-content:space-between;padding:.34rem 0;border:0;overflow-wrap:anywhere;text-align:right}
+ .tenant-table td::before{content:attr(data-label);font-weight:650;text-align:left;flex:0 0 42%;color:#28465b}
+}

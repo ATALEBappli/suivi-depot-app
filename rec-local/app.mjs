@@ -43,7 +43,25 @@ function settings(){
    const result=await api({action:'rec.reference'});
    const units=Array.isArray(result.units)?result.units:[];
    node('p',`${units.length} logement(s) et locataire(s)`,current);
-   table(current,['Appartement','Type','Locataire','Loyer mensuel (DA)'],units.map(u=>[u.num,u.type,u.locataire,u.loyer]));
+   const counts={F2:0,F3:0,F4:0};
+   for(const u of units)if(Object.hasOwn(counts,u.type))counts[u.type]++;
+   const legend=node('div',null,current,{class:'tenant-legend','aria-label':'Nombre de logements par type'});
+   for(const type of ['F2','F3','F4'])node('span',`${type} : ${counts[type]}`,legend,{class:'tenant-count type-'+type.toLowerCase()});
+   node('p','Caution indicative par défaut : loyer mensuel − 2 000 DA. Elle n’est pas encore enregistrée. Dates non renseignées.',current,{class:'tenant-hint'});
+   const headings=['Appartement','Type','Locataire','Loyer (DA)','Entrée','Sortie','Caution (DA)'];
+   const wrap=node('div',null,current,{class:'tenant-table-wrap'});
+   const listing=node('table',null,wrap,{class:'tenant-table'});
+   const head=node('tr',null,node('thead',null,listing));
+   for(const label of headings)node('th',label,head,{scope:'col'});
+   const body=node('tbody',null,listing);
+   for(const u of units){
+    const type=String(u.type || '').toUpperCase();
+    const tr=node('tr',null,body,{class:['F2','F3','F4'].includes(type)?'type-'+type.toLowerCase():''});
+    const rent=Number(u.loyer);
+    const money=n=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(n);
+    const values=[u.num,type,u.locataire,Number.isFinite(rent)?money(rent):'—','—','—',Number.isFinite(rent)&&rent>=2000?money(rent-2000):'—'];
+    for(let i=0;i<headings.length;i++)node('td',String(values[i] ?? ''),tr,{'data-label':headings[i]});
+   }
   });
   const frame=node('iframe',null,housing,{src:'/referentiel/index.html',title:'Référentiel V2'});
   frame.addEventListener('load',()=>{frame.contentWindow.recReferenceRequest=async body=>api(body);});
