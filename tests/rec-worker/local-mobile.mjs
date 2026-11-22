@@ -33,6 +33,7 @@ try{for(const width of [390,320]){
  await page.getByRole('button',{name:'Paramétrage',exact:true}).click();await page.getByRole('heading',{name:'Utilisateurs',exact:true}).waitFor();
  business=true;await page.reload();await page.locator('table').first().waitFor();assert.match(await page.locator('#identity').textContent(),/admin-mobile/);
  await page.getByRole('button',{name:'Paramétrage',exact:true}).click();
+ await page.locator('details.housing-current summary').click();
  await page.getByRole('heading',{name:'Liste actuelle des locataires',exact:true}).waitFor();
  await page.getByText('12 logement(s) et locataire(s)',{exact:true}).waitFor();
  assert.equal(await page.locator('.settings-panel[data-panel="housing"] .housing-current tbody tr').count(),12);
