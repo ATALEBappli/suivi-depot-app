@@ -51,3 +51,33 @@ test('une réponse GET récupérée à la deuxième tentative est vérifiée par
  assert.equal(result.ok,true);
  assert.deepEqual(calls,['POST','GET','GET']);
 });
+
+test('une seconde redirection Google autorisée est suivie uniquement en GET manuel',async()=>{
+ const calls=[];
+ const fetcher=async(url,options)=>{
+  calls.push({url,method:options.method,redirect:options.redirect});
+  if(calls.length===1)return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?first=1'}});
+  if(calls.length===2)return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?second=2'}});
+  const payload=JSON.stringify({nonce:nonce(),response:{ok:true,environment:'REC',scriptHash:pins.script,sheetHash:pins.sheet}});
+  return Response.json({payload,mac:mac(payload,cfg.key)});
+ };
+ assert.equal((await bridge(cfg,{fetcher,nonce})(body,user)).ok,true);
+ assert.deepEqual(calls.map(({method,redirect})=>[method,redirect]),[['POST','manual'],['GET','manual'],['GET','manual']]);
+});
+
+test('une redirection GET hors Google ou une chaîne supplémentaire est refusée, sans deuxième POST',async()=>{
+ for(const [secondLocation,error] of [
+  ['https://example.test/steal','GOOGLE_REDIRECT_REFUSED'],
+  ['https://script.googleusercontent.com/macros/echo?third=3','REC_GATEWAY_REDIRECT_CHAIN_REFUSED'],
+ ]){
+  const calls=[];
+  const fetcher=async(url,options)=>{
+   calls.push(options.method);
+   if(calls.length===1)return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?first=1'}});
+   if(calls.length===2)return new Response(null,{status:302,headers:{Location:secondLocation}});
+   return new Response(null,{status:302,headers:{Location:'https://script.googleusercontent.com/macros/echo?fourth=4'}});
+  };
+  await assert.rejects(bridge(cfg,{fetcher,nonce})(body,user),new RegExp(error));
+  assert.deepEqual(calls,['POST','GET',...(error==='REC_GATEWAY_REDIRECT_CHAIN_REFUSED'?['GET']:[])]);
+ }
+});
