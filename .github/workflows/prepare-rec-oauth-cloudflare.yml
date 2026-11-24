@@ -1,0 +1,28 @@
+name: Préparer pages OAuth REC Cloudflare (sans publication)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Contrôles statiques
+        run: |
+          node --test tests/rec-oauth-pages.test.mjs tests/rec-oauth-cloudflare.test.mjs
+          node scripts/check-js.mjs
+      - name: Préparer un paquet non publiable
+        run: node scripts/prepare-rec-oauth-cloudflare.mjs
+      - name: Archiver sans déployer
+        uses: actions/upload-artifact@v4
+        with:
+          name: rec-oauth-cloudflare-brouillon
+          path: work/rec-oauth-cloudflare/
+          retention-days: 7
