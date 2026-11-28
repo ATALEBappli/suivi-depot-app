@@ -30,7 +30,7 @@ test("export Pages exact et identique octet par octet à demo/", () =>
   fixture(({ source, target }) => {
     const report = prepareDemoPages({ source, target });
     assert.deepEqual(inventory(target), [...publishedFiles].sort());
-    assert.equal(report.length, 11);
+    assert.equal(report.length, 14);
     for (const path of publishedFiles)
       assert.deepEqual(
         readFileSync(join(target, path)),

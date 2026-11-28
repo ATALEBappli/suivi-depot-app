@@ -174,12 +174,14 @@ try {
       saved: "conserver",
       cache: "conserver",
     });
-    const child = spawn(process.execPath, ["tests/demo-browser.mjs"], {
-      env: { ...process.env, DEMO_TEST_URL: base },
-      stdio: "inherit",
-    });
-    const [code] = await once(child, "exit");
-    assert.equal(code, 0);
+    for (const testFile of ["tests/demo-browser.mjs", "tests/finance-browser.mjs"]) {
+      const child = spawn(process.execPath, [testFile], {
+        env: { ...process.env, DEMO_TEST_URL: base },
+        stdio: "inherit",
+      });
+      const [code] = await once(child, "exit");
+      assert.equal(code, 0, testFile);
+    }
   }
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
